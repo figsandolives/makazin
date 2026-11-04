@@ -1865,3 +1865,15 @@ tr.dj-inv { cursor: pointer; } tr.dj-inv:hover td { background: var(--surface-2)
 .dj-warn > .ic { color: var(--warning); flex: none; width: 20px; height: 20px; margin-top: 2px; }
 .dj-warn p { margin: 4px 0; font-size: .86rem; } .dj-warn small { color: var(--text-2); }
 .dj-body { grid-auto-rows: max-content; align-content: start; }
+
+/* ---------- reports: everything on the dashboard opens its invoices ---------- */
+.rp-click { cursor: pointer; transition: background-color .15s, box-shadow .15s, transform .15s; }
+.kpi.rp-click:hover, .kpi.rp-click:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent), var(--shadow, none); transform: translateY(-1px); outline: none; }
+.rp-in li.rp-click, .tp-row.rp-click { border-radius: 10px; margin: -4px -6px; padding: 4px 6px; }
+.rp-in li.rp-click:hover, .tp-row.rp-click:hover, .rp-peak.rp-click:hover { background: var(--surface-2); }
+.rp-hrs span.rp-click:hover i { filter: brightness(1.1); background: var(--c1); }
+.donut .seg.rp-click:hover { opacity: .8; }
+.chart-wrap.rp-click svg { cursor: pointer; }
+.rp-in .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+tr.rp-click-row { cursor: pointer; }
+tr.rp-click-row:hover td { background: var(--surface-2); }

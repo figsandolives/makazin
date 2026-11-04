@@ -76,6 +76,7 @@ function bindAreaHover(wrap, series, labels, fmt, tipFn) {
     const px = ((e.clientX - rect.left) / rect.width) * W;
     const i = Math.max(0, Math.min(labels.length - 1, Math.round(((px - pl) / (W - pl - pr)) * (labels.length - 1))));
     const cx = pl + ((W - pl - pr) * i) / (labels.length - 1);
+    wrap.dataset.i = i; // the point under the pointer, for pages that open it on click
     cross.setAttribute('x1', cx); cross.setAttribute('x2', cx);
     series.forEach((s, si) => { dots[si].setAttribute('cx', cx); dots[si].setAttribute('cy', pt + ih - (s.values[i] / max) * ih); });
     tip.innerHTML = tipFn ? tipFn(i) : `<b>${labels[i]}</b>${series.map(s => `<span><i class="sw ${s.cls}"></i>${s.name}<em>${fmt(s.values[i])}</em></span>`).join('')}`;
@@ -84,6 +85,7 @@ function bindAreaHover(wrap, series, labels, fmt, tipFn) {
     wrap.classList.add('hovering');
   };
   svg.addEventListener('pointermove', move);
+  svg.addEventListener('pointerdown', move);
   svg.addEventListener('pointerleave', () => wrap.classList.remove('hovering'));
 }
 

@@ -66,8 +66,24 @@ const rpActive = () => Object.entries(LIVE.cache.orders || {}).filter(([, o]) =>
 const rpBetween = (start, end, branch = 'all') => rpActive().filter(x => x.ts && x.ts >= start && x.ts <= end && (branch === 'all' || x.o.branchId === branch));
 const rpOrders = (from, to, branch = 'all') => rpActive().filter(x => inRange(x.ts, from, to) && (branch === 'all' || String(x.o.branchId || '') === String(branch))).sort((a, b) => b.ts - a.ts);
 const rpCost = o => oItems(o).reduce((s, it) => s + it.qty * rpNum(((LIVE.cache.products || {})[it.productId] || {}).cost), 0);
-const rpNet = o => rpNum(o.total) - rpNum(o.deliveryFee) - rpCost(o);
-const rpProducts = o => Number(o.subtotal ?? o.netTotal ?? (rpNum(o.total) - rpNum(o.deliveryFee))) || 0;
+/* Delivery: the cashier saves it as deliveryPrice (deliveryFee only on old-site
+   orders), so counting deliveryFee alone missed most of it. oFee reads both. */
+const rpNet = o => rpNum(o.total) - oFee(o) - rpCost(o);
+const rpProducts = o => Number(o.subtotal ?? o.subTotal ?? o.netTotal ?? (rpNum(o.total) - oFee(o))) || 0;
+/* The real clock time of an order. oTime puts a deferred invoice on its
+   accountingDate at midnight, which made a false peak at 12 AM. */
+const rpClock = o => { const v = o && (o.createdAt ?? o.timestamp ?? o.date); const n = typeof v === 'number' ? v : new Date(v || 0).getTime(); return Number.isFinite(n) && n > 0 ? n : oTime(o); };
+/* Walk-in sales are saved with filler phones ("965.", "96500000") and names
+   (".", "000"): they are not customers. */
+function rpPhoneKey(o) {
+  let d = String(oPhone(o)).replace(/\D/g, '');
+  const core = d.startsWith('965') ? d.slice(3) : d;
+  if (!core.replace(/0/g, '') || /^(\d)\1+$/.test(core)) return null;
+  if (d.length > 8 && d.startsWith('965')) d = core;
+  return d.length >= 7 ? d : null;
+}
+const rpCustKey = o => (o && o.customerId ? `id:${o.customerId}` : rpPhoneKey(o));
+const rpCustLabel = o => { const n = String(oCustName(o) || '').trim(); return /\p{L}/u.test(n) ? n : (oPhone(o) !== '-' ? oPhone(o) : n || '-'); };
 const rpBranchName = id => (id === 'all' ? t('allBranches') : nameOf((LIVE.cache.branches || {})[id]) || '-');
 function rpCatTrail(id) {
   const cats = LIVE.cache.productCategories || {}, out = [];
@@ -107,6 +123,11 @@ PAGES.reports = view => {
   const selF = (f, label) => `<div class="select tb-select"><select data-f="${f}" aria-label="${esc(label)}"></select>${icon('chevDown')}</div>`;
   const searchF = (f, ph, v) => `<label class="search-field">${icon('search')}<input type="search" data-f="${f}" placeholder="${esc(ph)}" value="${esc(v || '')}" autocomplete="off"></label>`;
   const fill = (f, html) => { const el = $(`[data-f="${f}"]`, view); if (el) setHtml(el, html); };
+  /* Rows that stand for one invoice open it (invoiceDetails, as the orders page) */
+  let invRef = new Map();
+  const inv = o => { const k = String(invRef.size); invRef.set(k, o); return k; };
+  const clk = (html, kind, label, val = '') => html.replace('<article class="kpi card"', `<article class="kpi card rp-click" data-drill="${kind}" data-val="${esc(val)}" data-label="${esc(label)}" role="button" tabindex="0"`);
+  const viewBtn = (kind, label) => `<button class="btn btn-sm btn-soft" data-drill="${kind}" data-label="${esc(label)}">${icon('eye')}<span>${t('rp.view')}</span></button>`;
   const branchOpts = v => `<option value="all">${t('allBranches')}</option>` + optsHtml(sortedOpts(LIVE.cache.branches), v);
 
   /* Sub-report frame: back, title, export / print, totals, filters, table */
@@ -132,6 +153,14 @@ PAGES.reports = view => {
     setHtml($('#rpBody', view), skeletonRows(6, cols));
     const k = $('#rpK', view); if (k) k.innerHTML = skeletonKpis();
     return true;
+  }
+
+  /* The dashboard period as from / to dates, for the reports it opens */
+  const periodF = () => { const r = rpRange(st.period, st.date); return { from: rpIso(new Date(r.start)), to: rpIso(new Date(r.end)) }; };
+  /* Open the invoices behind a card, a chart point or a row of the dashboard */
+  function drill(kind, label, val = '', metric = '') {
+    Object.assign(st.md, { metric: metric || (kind === 'all' || kind === 'fee' ? 'revenue' : 'orders'), branch: kind === 'branch' ? val : st.branch, cashier: 'all', customer: kind === 'cust' ? val : 'all', q: '', pick: { kind, val: String(val), label } });
+    go('metricDetails');
   }
 
   /* =================== dashboard =================== */
@@ -203,7 +232,12 @@ PAGES.reports = view => {
         ${st.cmp ? `<div class="legend"><span><i class="sw c1"></i>${t('rp.current')}</span><span><i class="sw dashed"></i>${t('rp.compare')}</span></div>` : ''}
         <div class="chart-wrap"><div class="chart-tip"></div>${areaChart(series, labels, { h: 200, int: isCount, fmt: v => (isCount ? fmtNum(v) : fmtCompact(v)) })}</div>
       </article>`,
-      bind: el => bindAreaHover($('.chart-wrap', el), series, labels, null, tip)
+      bind: el => {
+        const wrap = $('.chart-wrap', el);
+        bindAreaHover(wrap, series, labels, null, tip);
+        wrap.classList.add('rp-click');
+        wrap.addEventListener('click', () => { const i = +wrap.dataset.i; if (Number.isInteger(i)) drill('bucket', `${title} · ${labels[i]}`, i, key); });
+      }
     };
   }
   function dashShell() {
@@ -224,7 +258,7 @@ PAGES.reports = view => {
           .map(([v, ic, tone, k]) => `<button class="rp-link" data-open="${v}"><span class="kpi-ic ${tone}">${icon(ic)}</span><span>${t(k)}</span>${icon('chevLeft', 'flip')}</button>`).join('')}</div>
       </section>
       <section class="card tp-card" data-anim>
-        <header class="card-head"><h3>${t('rp.tpChart')}</h3>
+        <header class="card-head"><div><h3>${t('rp.tpChart')}</h3><p class="muted" id="rpTpSub"></p></div>
           <div class="tp-ctl"><span class="select mini"><select id="rpTpMode" aria-label="${t('rp.tpChart')}"></select>${icon('chevDown')}</span>
             <span class="select mini"><select id="rpTpLimit" aria-label="${t('it.perPage')}"></select>${icon('chevDown')}</span>
             <button class="btn btn-sm btn-primary" data-open="topProducts">${t('rp.showReport')}</button></div></header>
@@ -252,7 +286,8 @@ PAGES.reports = view => {
     drawInsights(range, cmpRange);
     setHtml($('#rpTpMode', view), [['top', t('rp.modeTop')], ['bottom', t('rp.modeBottom')]].map(([v, l]) => `<option value="${v}" ${st.tp.mode === v ? 'selected' : ''}>${l}</option>`).join(''));
     setHtml($('#rpTpLimit', view), [10, 50, 100].map(n => `<option ${st.tp.limit === n ? 'selected' : ''}>${n}</option>`).join(''));
-    setHtml($('#rpTp', view), tpChart(tpData(st.tp)));
+    setHtml($('#rpTpSub', view), `${rpRangeLabel(range)} · ${esc(rpBranchName(st.branch))}`);
+    setHtml($('#rpTp', view), tpChart(tpData({ ...st.tp, q: '', ...periodF(), branch: st.branch })));
     placeThumb($('#rpSeg', view));
   }
 
@@ -260,7 +295,7 @@ PAGES.reports = view => {
   function drawInsights(range, cmpRange) {
     const cur = rpBetween(range.start, range.end, st.branch);
     const prev = st.cmp ? rpBetween(cmpRange.start, cmpRange.end, st.branch) : null;
-    const sum = list => list.reduce((a, { o }) => ({ n: a.n + 1, total: a.total + rpNum(o.total), fee: a.fee + rpNum(o.deliveryFee), net: a.net + rpNet(o) }), { n: 0, total: 0, fee: 0, net: 0 });
+    const sum = list => list.reduce((a, { o }) => ({ n: a.n + 1, total: a.total + rpNum(o.total), fee: a.fee + oFee(o), net: a.net + rpNet(o) }), { n: 0, total: 0, fee: 0, net: 0 });
     const c = sum(cur), p = prev && sum(prev);
     const delta = (a, b) => (p && b ? ((a - b) / b) * 100 : undefined);
     const avg = x => (x.n ? x.total / x.n : 0);
@@ -274,22 +309,22 @@ PAGES.reports = view => {
     const kBox = $('#rpDK', view), sig = JSON.stringify(deltas);
     const kFirst = first || kBox._sig !== sig; kBox._sig = sig;
     setKpis(kBox, [
-      kpiCard({ label: t('rp.kNet'), value: c.net, kind: 'money', ic: 'chart', tone: 'c1', delta: deltas[0] }),
-      kpiCard({ label: t('rp.kAvg'), value: avg(c), kind: 'money', ic: 'receipt', tone: 'c2', delta: deltas[1] }),
-      kpiCard({ label: t('rp.kFee'), value: c.fee, kind: 'money', ic: 'bike', tone: 'c3', delta: deltas[2] }),
-      kpiCard({ label: cancelled.length ? `${t('rp.kCancelled')} · ${moneyPlain(cancelledSum)}` : t('rp.kCancelled'), value: cancelled.length, ic: 'alert', tone: 'c4' })
+      clk(kpiCard({ label: t('rp.kNet'), value: c.net, kind: 'money', ic: 'chart', tone: 'c1', delta: deltas[0] }), 'all', t('rp.kNet')),
+      clk(kpiCard({ label: t('rp.kAvg'), value: avg(c), kind: 'money', ic: 'receipt', tone: 'c2', delta: deltas[1] }), 'all', t('rp.kAvg')),
+      clk(kpiCard({ label: t('rp.kFee'), value: c.fee, kind: 'money', ic: 'bike', tone: 'c3', delta: deltas[2] }), 'fee', t('rp.kFee')),
+      clk(kpiCard({ label: cancelled.length ? `${t('rp.kCancelled')} · ${moneyPlain(cancelledSum)}` : t('rp.kCancelled'), value: cancelled.length, ic: 'alert', tone: 'c4' }), 'cancelled', t('rp.kCancelled'))
     ].join(''), kFirst);
 
     const none = `<div class="empty-state sm">${icon('chart')}<b>${t('rp.noData')}</b><small>${t('rp.noDataSub')}</small></div>`;
     const group = (list, keyOf, labelOf, val) => Object.values(list.reduce((m, x) => { const k = keyOf(x.o); if (k == null) return m; (m[k] ||= { key: k, label: labelOf(x.o), v: 0, n: 0 }).v += val(x.o); m[k].n += 1; return m; }, {})).sort((a, b) => b.v - a.v);
-    const card = (title, sub, body, cls = '') => `<article class="card rp-in ${cls}"><header class="card-head"><div><h3>${title}</h3><p class="muted">${sub}</p></div></header>${body}</article>`;
+    const card = (title, sub, body, cls = '') => `<article class="card rp-in ${cls}"><header class="card-head"><div><h3>${title}</h3><p class="muted">${sub}</p></div>${viewBtn('all', title)}</header>${body}</article>`;
 
     // Branches: every branch (the branch filter doesn't apply), share of sales and change vs the compare period
     const bAll = rpBetween(range.start, range.end), bPrev = st.cmp ? group(rpBetween(cmpRange.start, cmpRange.end), o => o.branchId || 'unknown', oBranch, o => rpNum(o.total)) : [];
     const branches = group(bAll, o => o.branchId || 'unknown', oBranch, o => rpNum(o.total)), bTotal = branches.reduce((s, b) => s + b.v, 0);
     const branchHtml = branches.length ? `<ul class="branch-list">${branches.map((b, i) => {
       const before = bPrev.find(x => x.key === b.key), d = st.cmp ? (before && before.v ? ((b.v - before.v) / before.v) * 100 : null) : undefined;
-      return `<li><span class="b-ic" style="--h:${hue(b.label)}">${icon('building')}</span><div class="bar-body"><div class="bar-top"><span>${esc(b.label)}</span><b>${money(b.v)}</b></div>
+      return `<li class="rp-click" data-drill="branch" data-val="${esc(b.key)}" data-label="${esc(b.label)}"><span class="b-ic" style="--h:${hue(b.label)}">${icon('building')}</span><div class="bar-body"><div class="bar-top"><span>${esc(b.label)}</span><b>${money(b.v)}</b></div>
         <span class="bar thin"><i class="c${(i % 5) + 1}" style="--w:${((b.v / (branches[0].v || 1)) * 100).toFixed(1)}%;--d:${i * 70}ms"></i></span>
         <small class="rp-bmeta"><bdi dir="ltr">${fmtNum((b.v / (bTotal || 1)) * 100, 1)}%</bdi> ${t('rp.ofSales')} · ${b.n} ${t('rp.ordersWord')}</small></div>
         ${d === undefined ? '' : d === null ? `<span class="delta up">${t('rp.newShort')}</span>` : `<span class="delta ${d >= 0 ? 'up' : 'down'}" dir="ltr">${d >= 0 ? '+' : ''}${d.toFixed(1)}%</span>`}</li>`;
@@ -297,28 +332,30 @@ PAGES.reports = view => {
 
     // Peak hours: orders in each hour of the day over the whole period
     const hrs = Array.from({ length: 24 }, () => ({ n: 0, v: 0 }));
-    cur.forEach(({ o, ts }) => { const h = hrs[new Date(ts).getHours()]; h.n += 1; h.v += rpNum(o.total); });
+    cur.forEach(({ o }) => { const h = hrs[new Date(rpClock(o)).getHours()]; h.n += 1; h.v += rpNum(o.total); });
     const hMax = Math.max(...hrs.map(h => h.n)), peak = hrs.findIndex(h => h.n === hMax);
     const hLabel = h => new Intl.DateTimeFormat(loc(), { hour: 'numeric' }).format(new Date(2000, 0, 1, h));
-    const peakHtml = hMax ? `<p class="rp-peak">${icon('clock')}<span>${t('rp.peakAt')}</span><b>${hLabel(peak)} – ${hLabel((peak + 1) % 24)}</b><small>${hrs[peak].n} ${t('rp.ordersWord')}</small></p>
-      <div class="rp-hrs" dir="ltr">${hrs.map((h, i) => `<span class="${i === peak ? 'on' : ''}" title="${esc(`${hLabel(i)}: ${h.n} ${t('rp.ordersWord')} · ${moneyPlain(h.v)}`)}"><i style="--h:${((h.n / hMax) * 100).toFixed(1)}%;--d:${i * 20}ms"></i></span>`).join('')}</div>
+    const peakHtml = hMax ? `<p class="rp-peak rp-click" data-drill="hour" data-val="${peak}" data-label="${esc(`${t('rp.peak')} · ${hLabel(peak)} – ${hLabel((peak + 1) % 24)}`)}">${icon('clock')}<span>${t('rp.peakAt')}</span><b>${hLabel(peak)} – ${hLabel((peak + 1) % 24)}</b><small>${hrs[peak].n} ${t('rp.ordersWord')}</small></p>
+      <div class="rp-hrs" dir="ltr">${hrs.map((h, i) => `<span class="${i === peak ? 'on' : ''}${h.n ? ' rp-click" data-drill="hour" data-val="' + i + '" data-label="' + esc(`${t('rp.peak')} · ${hLabel(i)} – ${hLabel((i + 1) % 24)}`) : ''}" title="${esc(`${hLabel(i)}: ${h.n} ${t('rp.ordersWord')} · ${moneyPlain(h.v)}`)}"><i style="--h:${((h.n / hMax) * 100).toFixed(1)}%;--d:${i * 20}ms"></i></span>`).join('')}</div>
       <div class="rp-hrs-ax" dir="ltr">${[0, 6, 12, 18, 23].map(h => `<small>${hLabel(h)}</small>`).join('')}</div>` : none;
 
     // Payment methods by sales value
     const pays = group(cur, oPay, oPay, o => rpNum(o.total));
     const top5 = list => (list.length > 5 ? list.slice(0, 4).concat([{ label: t('rp.other'), v: list.slice(4).reduce((s, x) => s + x.v, 0), n: list.slice(4).reduce((s, x) => s + x.n, 0) }]) : list);
     const pList = top5(pays), pTotal = pList.reduce((s, x) => s + x.v, 0);
-    const payHtml = pTotal > 0 ? `<div class="rp-donut"><div class="donut-box">${donut(pList.map((x, i) => ({ value: x.v, cls: `c${i + 1}` })), 150, 18)}<div class="donut-center"><b>${pList.length}</b><small>${t('rp.payWord')}</small></div></div>
-      <ul class="legend-list">${pList.map((x, i) => `<li><i class="sw c${i + 1}"></i><span>${esc(x.label)}</span><b><bdi dir="ltr">${fmtNum((x.v / pTotal) * 100, 0)}%</bdi></b></li>`).join('')}</ul></div>` : none;
+    const payAttr = x => (x.key != null ? ` class="rp-click" data-drill="pay" data-val="${esc(x.key)}" data-label="${esc(`${t('rp.pay')} · ${x.label}`)}"` : '');
+    const payDonut = donut(pList.map((x, i) => ({ value: x.v, cls: `c${i + 1}` })), 150, 18).replace(/<circle class="seg (c(\d+))"/g, (m, c, n) => { const x = pList[n - 1]; return x && x.key != null ? `<circle class="seg ${c} rp-click" data-drill="pay" data-val="${esc(x.key)}" data-label="${esc(`${t('rp.pay')} · ${x.label}`)}"` : m; });
+    const payHtml = pTotal > 0 ? `<div class="rp-donut"><div class="donut-box">${payDonut}<div class="donut-center"><b>${pList.length}</b><small>${t('rp.payWord')}</small></div></div>
+      <ul class="legend-list">${pList.map((x, i) => `<li${payAttr(x)}><i class="sw c${i + 1}"></i><span>${esc(x.label)}</span><b><bdi dir="ltr">${fmtNum((x.v / pTotal) * 100, 0)}%</bdi></b></li>`).join('')}</ul></div>` : none;
 
     // Order types by number of orders
     const types = group(cur, oType, oType, () => 1), tTotal = types.reduce((s, x) => s + x.v, 0);
-    const typeHtml = tTotal ? `<ul class="bars">${top5(types).map((x, i) => `<li><span class="rank">${i + 1}</span><div class="bar-body"><div class="bar-top"><span>${esc(x.label)}</span><b>${x.n} <small><bdi dir="ltr">${fmtNum((x.n / tTotal) * 100, 0)}%</bdi></small></b></div>
+    const typeHtml = tTotal ? `<ul class="bars">${top5(types).map((x, i) => `<li${x.key != null ? ` class="rp-click" data-drill="type" data-val="${esc(x.key)}" data-label="${esc(`${t('rp.types')} · ${x.label}`)}"` : ''}><span class="rank">${i + 1}</span><div class="bar-body"><div class="bar-top"><span>${esc(x.label)}</span><b>${x.n} <small><bdi dir="ltr">${fmtNum((x.n / tTotal) * 100, 0)}%</bdi></small></b></div>
       <span class="bar"><i class="c${(i % 5) + 1}" style="--w:${((x.n / types[0].v) * 100).toFixed(1)}%;--d:${i * 70}ms"></i></span></div></li>`).join('')}</ul>` : none;
 
     // Best customers in the period
-    const custs = group(cur, o => o.customerId || (oPhone(o) !== '-' ? oPhone(o) : null), oCustName, o => rpNum(o.total)).slice(0, 5);
-    const custHtml = custs.length ? `<ul class="rp-cust">${custs.map((x, i) => `<li><span class="rank">${i + 1}</span><span class="cell-2"><b>${esc(x.label)}</b><small>${x.n} ${t('rp.ordersWord')}</small></span><b class="num">${money(x.v)}</b></li>`).join('')}</ul>` : none;
+    const custs = group(cur, rpCustKey, rpCustLabel, o => rpNum(o.total)).slice(0, 5);
+    const custHtml = custs.length ? `<ul class="rp-cust">${custs.map((x, i) => `<li class="rp-click" data-drill="cust" data-val="${esc(x.key)}" data-label="${esc(`${t('rp.topCust')} · ${x.label}`)}"><span class="rank">${i + 1}</span><span class="cell-2"><b>${esc(x.label)}</b><small>${x.n} ${t('rp.ordersWord')}</small></span><b class="num">${money(x.v)}</b></li>`).join('')}</ul>` : none;
 
     const box = $('#rpIns', view);
     const html = card(t('rp.peak'), t('rp.peakSub'), peakHtml, 'span-2') + card(t('rp.branchPerf'), t('rp.branchPerfSub'), branchHtml)
@@ -329,7 +366,7 @@ PAGES.reports = view => {
   /* =================== top products (shared by the dashboard) =================== */
   function tpData(f) {
     const products = LIVE.cache.products || {}, branches = LIVE.cache.branches || {}, q = normQ(f.q), map = {}, cols = new Map();
-    rpOrders(f.from, f.to).forEach(({ o }) => {
+    rpOrders(f.from, f.to, f.branch || 'all').forEach(({ o }) => {
       const bk = String(o.branchId || '') || 'unknown';
       oItems(o).forEach(it => {
         const pid = String(it.productId || ''); if (!pid) return;
@@ -344,16 +381,16 @@ PAGES.reports = view => {
     rows.sort((a, b) => (f.mode === 'bottom' ? a.total - b.total : b.total - a.total));
     rows = rows.slice(0, [10, 50, 100].includes(+f.limit) ? +f.limit : 10);
     const columns = [...cols.values()].sort((a, b) => (b.main - a.main) || a.name.localeCompare(b.name)).map((c, i) => ({ ...c, tone: `c${(i % 5) + 1}`, label: `${t('rp.salesOf')} ${c.name}` }));
-    return { rows, columns, total: rows.reduce((s, r) => s + r.total, 0) };
+    return { rows, columns, branch: f.branch || 'all', total: rows.reduce((s, r) => s + r.total, 0) };
   }
-  function tpChart({ rows, columns }) {
+  function tpChart({ rows, columns, branch = 'all' }) {
     if (!rows.length) return `<div class="empty-state">${icon('chart')}<b>${t('rp.noData')}</b><small>${t('rp.noDataSub')}</small></div>`;
     const max = Math.max(...rows.map(r => r.total), 1);
     return `<div class="legend tp-legend">${columns.map(c => `<span><i class="sw ${c.tone}"></i>${esc(c.label)}</span>`).join('')}</div>
       <ol class="tp-list">${rows.map((r, i) => {
         const w = r.total > 0 ? Math.max((r.total / max) * 100, 4) : 0;
         const en = r.nameEn && normQ(r.nameEn) !== normQ(r.nameAr) ? r.nameEn : '-';
-        return `<li class="tp-row" style="--d:${Math.min(i, 20) * 30}ms"><span class="rank">${i + 1}</span>
+        return `<li class="tp-row rp-click" data-tpd="${esc(r.productId)}" data-b="${esc(branch)}" style="--d:${Math.min(i, 20) * 30}ms"><span class="rank">${i + 1}</span>
           <span class="cell-2 tp-name"><b>${esc(r.nameAr)}</b><small>${esc(en)}</small></span>
           <span class="tp-track"><span class="tp-bar" style="--w:${w.toFixed(2)}%">${columns.map(c => `<i class="${c.tone}" style="width:${r.total > 0 ? ((rpNum(r.by[c.key]) / r.total) * 100).toFixed(2) : 0}%" title="${esc(c.label)}: ${esc(moneyPlain(rpNum(r.by[c.key])))}"></i>`).join('')}</span></span>
           <b class="num">${money(r.total)}</b></li>`;
@@ -365,36 +402,46 @@ PAGES.reports = view => {
 
   /* ---- orders / sales of the dashboard period ---- */
   V.metricDetails = {
-    title: () => (st.md.metric === 'revenue' ? t('rp.revenue') : t('orders')),
+    title: () => (st.md.pick && st.md.pick.label) || (st.md.metric === 'revenue' ? t('rp.revenue') : t('orders')),
     shell: () => shell(V.metricDetails.title(), '', searchF('q', t('rp.searchInvoice'), st.md.q) + selF('branch', t('o.branch')) + selF('cashier', t('o.cashier')) + selF('customer', t('o.customer')), { k: 5 }),
     data() {
-      const range = rpRange(st.period, st.date), f = st.md, q = normQ(f.q);
-      const inPeriod = rpBetween(range.start, range.end, 'all');
-      const rows = inPeriod.filter(({ o }) => (f.branch === 'all' || o.branchId === f.branch) && (f.cashier === 'all' || String(o.cashierId || '') === f.cashier) && (f.customer === 'all' || String(o.customerId || '') === f.customer))
-        .map(({ o, ts }) => ({ o, ts, num: oNum(o), cust: oCustName(o), phone: oPhone(o), products: Number(o.netTotal ?? (rpNum(o.total) - rpNum(o.deliveryFee))) || 0, fee: rpNum(o.deliveryFee), total: rpNum(o.total), net: rpNet(o) }))
+      const range = rpRange(st.period, st.date), f = st.md, q = normQ(f.q), pick = f.pick || { kind: 'all' };
+      const inPeriod = pick.kind === 'cancelled'
+        ? Object.entries(LIVE.cache.orders || {}).filter(([, o]) => o && typeof o === 'object' && oCancelled(o)).map(([id, o]) => ({ id, o, ts: oTime(o) })).filter(x => x.ts >= range.start && x.ts <= range.end)
+        : rpBetween(range.start, range.end, 'all');
+      const match = ({ o, ts }) => {
+        if (pick.kind === 'fee') return oFee(o) > 0;
+        if (pick.kind === 'bucket') { const i = +pick.val; return ts >= range.edges[i] && ts < range.edges[i + 1]; }
+        if (pick.kind === 'hour') return new Date(rpClock(o)).getHours() === +pick.val;
+        if (pick.kind === 'pay') return oPay(o) === pick.val;
+        if (pick.kind === 'type') return oType(o) === pick.val;
+        return true;
+      };
+      const rows = inPeriod.filter(x => match(x) && (f.branch === 'all' || x.o.branchId === f.branch) && (f.cashier === 'all' || String(x.o.cashierId || '') === f.cashier) && (f.customer === 'all' || rpCustKey(x.o) === f.customer))
+        .map(({ o, ts }) => ({ o, ts, num: oNum(o), cust: oCustName(o), phone: oPhone(o), products: rpProducts(o), fee: oCancelled(o) ? rpNum(o.deliveryFee ?? o.deliveryPrice) : oFee(o), total: rpNum(o.total), net: oCancelled(o) ? 0 : rpNet(o) }))
         .filter(r => !q || normQ(`${r.num} ${r.cust} ${r.phone}`).includes(q)).sort((a, b) => b.ts - a.ts);
       const tot = rows.reduce((a, r) => ({ n: a.n + 1, products: a.products + r.products, fee: a.fee + r.fee, total: a.total + r.total, net: a.net + r.net }), { n: 0, products: 0, fee: 0, total: 0, net: 0 });
       const opts = (key, label) => [...new Set(inPeriod.map(({ o }) => o[key]).filter(Boolean))].map(id => [id, label(id)]).sort((a, b) => a[1].localeCompare(b[1]));
-      return { range, rows, tot, branches: opts('branchId', id => nameOf((LIVE.cache.branches || {})[id]) || id), cashiers: opts('cashierId', id => ((LIVE.cache.cashiers || {})[id] || {}).name || id), customers: opts('customerId', id => nameOf((LIVE.cache.customers || {})[id]) || id) };
+      return { range, rows, tot, branches: opts('branchId', id => nameOf((LIVE.cache.branches || {})[id]) || id), cashiers: opts('cashierId', id => ((LIVE.cache.cashiers || {})[id] || {}).name || id), customers: [...inPeriod.reduce((m, { o }) => { const k = rpCustKey(o); if (k && !m.has(k)) m.set(k, rpCustLabel(o)); return m; }, new Map())].sort((a, b) => a[1].localeCompare(b[1])) };
     },
     cols: () => ['#', t('o.number'), t('o.customer'), t('c.phone'), t('o.branch'), t('o.cashier'), t('rp.productsAmount'), t('o.fee'), t('o.grand')],
     draw() {
       const d = this.data(), f = st.md;
-      setHtml($('#rpSub', view), `${t('rp.period')}: ${rpRangeLabel(d.range)}`);
+      setHtml($('#rpSub', view), `${t('rp.period')}: ${rpRangeLabel(d.range)}${f.branch !== 'all' ? ` · ${esc(rpBranchName(f.branch))}` : ''}`);
       fill('branch', `<option value="all">${t('all')}</option>` + optsHtml(d.branches, f.branch));
       fill('cashier', `<option value="all">${t('all')}</option>` + optsHtml(d.cashiers, f.cashier));
       fill('customer', `<option value="all">${t('all')}</option>` + optsHtml(d.customers, f.customer));
       kpis([[t('rp.invoices'), d.tot.n, 'num', 'receipt', 'c1'], [t('rp.totalProducts'), d.tot.products, 'money', 'package', 'c2'], [t('rp.totalDelivery'), d.tot.fee, 'money', 'bike', 'c3'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c4'], [t('rp.totalNet'), d.tot.net, 'money', 'chart', 'c5']]);
       const c = this.cols();
       setHtml($('#rpHead', view), th(c.slice(0, 6).concat(c.slice(6).map(x => [x, 'end']))));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr class="${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(r.num)}</b>`)}${td(c[2], esc(r.cust))}${td(c[3], `<span class="mono">${esc(r.phone)}</span>`)}${td(c[4], esc(oBranch(r.o)))}${td(c[5], esc(oCashier(r.o)))}${td(c[6], money(r.products), 'end num')}${td(c[7], money(r.fee), 'end num')}${td(c[8], `<b>${money(r.total)}</b>`, 'end num')}</tr>`).join('') : empty(9, f.q || f.branch !== 'all' || f.cashier !== 'all' || f.customer !== 'all'));
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(r.num)}</b>`)}${td(c[2], esc(r.cust))}${td(c[3], `<span class="mono">${esc(r.phone)}</span>`)}${td(c[4], esc(oBranch(r.o)))}${td(c[5], esc(oCashier(r.o)))}${td(c[6], money(r.products), 'end num')}${td(c[7], money(r.fee), 'end num')}${td(c[8], `<b>${money(r.total)}</b>`, 'end num')}</tr>`).join('') : empty(9, f.q || f.branch !== 'all' || f.cashier !== 'all' || f.customer !== 'all'));
       setHtml($('#rpFoot', view), '');
     },
     rows() { return this.data().rows.map((r, i) => [i + 1, r.num, r.cust, r.phone, oBranch(r.o), oCashier(r.o), r.products, r.fee, r.total]); },
     export() { const c = this.cols(); excelOut(this.rows().map(r => Object.fromEntries(c.map((h, j) => [h, j >= 6 ? +r[j].toFixed(3) : r[j]]))), 'metric-details.xlsx'); },
     print() {
       const d = this.data(), f = st.md;
-      printDoc(this.title(), [[t('rp.period'), rpRangeLabel(d.range)], [t('o.branch'), f.branch === 'all' ? t('all') : rpBranchName(f.branch)], [t('o.cashier'), f.cashier === 'all' ? t('all') : ((LIVE.cache.cashiers || {})[f.cashier] || {}).name || f.cashier], [t('o.customer'), f.customer === 'all' ? t('all') : nameOf((LIVE.cache.customers || {})[f.customer]) || f.customer]],
+      printDoc(this.title(), [[t('rp.period'), rpRangeLabel(d.range)], [t('o.branch'), f.branch === 'all' ? t('all') : rpBranchName(f.branch)], [t('o.cashier'), f.cashier === 'all' ? t('all') : ((LIVE.cache.cashiers || {})[f.cashier] || {}).name || f.cashier], [t('o.customer'), f.customer === 'all' ? t('all') : (d.customers.find(c => c[0] === f.customer) || [, f.customer])[1]]],
         this.cols(), this.rows().map(r => r.map((v, j) => (j >= 6 ? moneyPlain(v) : String(v)))),
         [[t('rp.invoices'), String(d.tot.n)], [t('rp.totalProducts'), moneyPlain(d.tot.products)], [t('rp.totalDelivery'), moneyPlain(d.tot.fee)], [t('rp.totalSales'), moneyPlain(d.tot.total)], [t('rp.totalNet'), moneyPlain(d.tot.net)]]);
     }
@@ -480,7 +527,7 @@ PAGES.reports = view => {
       fill('branch', branchOpts(st.det.branch));
       kpis([[t('rp.totalRevenue'), d.total, 'money', 'wallet', 'c1'], [t('rp.invoices'), d.rows.length, 'num', 'receipt', 'c2']]);
       setHtml($('#rpHead', view), th([c[0], c[1], c[2], c[3], [c[4], 'end'], [c[5], 'end'], c[6]]));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr class="${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[2], esc(oCustName(r.o)))}${td(c[3], esc(oCashier(r.o)))}${td(c[4], fmtNum(r.qty, 3), 'end num')}${td(c[5], `<b>${money(r.revenue)}</b>`, 'end num')}${td(c[6], `<span class="date">${fmtDateTime(r.ts)}</span>`)}</tr>`).join('') : empty(7, st.det.branch !== 'all'));
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[2], esc(oCustName(r.o)))}${td(c[3], esc(oCashier(r.o)))}${td(c[4], fmtNum(r.qty, 3), 'end num')}${td(c[5], `<b>${money(r.revenue)}</b>`, 'end num')}${td(c[6], `<span class="date">${fmtDateTime(r.ts)}</span>`)}</tr>`).join('') : empty(7, st.det.branch !== 'all'));
       setHtml($('#rpFoot', view), '');
     },
     rows() { return this.data().rows.map((r, i) => [i + 1, oNum(r.o), oCustName(r.o), oCashier(r.o), r.qty, r.revenue, fmtDateTime(r.ts)]); },
@@ -530,7 +577,7 @@ PAGES.reports = view => {
     data() {
       const id = String(st.csd.cashierId || 'unknown');
       const rows = rpOrders(st.cs.from, st.cs.to, st.cs.branch).filter(({ o }) => String(o.cashierId || 'unknown') === id)
-        .map(({ o, ts }) => ({ o, ts, products: rpProducts(o), fee: rpNum(o.deliveryFee), total: rpNum(o.total) }));
+        .map(({ o, ts }) => ({ o, ts, products: rpProducts(o), fee: oFee(o), total: rpNum(o.total) }));
       return { rows, tot: rows.reduce((a, r) => ({ products: a.products + r.products, fee: a.fee + r.fee, total: a.total + r.total }), { products: 0, fee: 0, total: 0 }) };
     },
     name() { const r = this.data().rows[0]; return (r && oCashier(r.o)) || ((LIVE.cache.cashiers || {})[st.csd.cashierId] || {}).name || st.csd.cashierId || '-'; },
@@ -541,7 +588,7 @@ PAGES.reports = view => {
       $('.rp-tools', view).hidden = true;
       kpis([[t('rp.totalProducts'), d.tot.products, 'money', 'package', 'c1'], [t('rp.totalDelivery'), d.tot.fee, 'money', 'bike', 'c2'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c3']]);
       setHtml($('#rpHead', view), th(c.slice(0, 5).concat(c.slice(5, 8).map(x => [x, 'end'])).concat([c[8]])));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr class="${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td(c[0], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[1], esc(oCustName(r.o)))}${td(c[2], `<span class="mono">${esc(oPhone(r.o))}</span>`)}${td(c[3], esc(oBranch(r.o)))}${td(c[4], esc(oCashier(r.o)))}${td(c[5], money(r.products), 'end num')}${td(c[6], money(r.fee), 'end num')}${td(c[7], `<b>${money(r.total)}</b>`, 'end num')}${td(c[8], `<span class="date">${fmtDateTime(r.ts)}</span>`)}</tr>`).join('') : empty(9));
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td(c[0], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[1], esc(oCustName(r.o)))}${td(c[2], `<span class="mono">${esc(oPhone(r.o))}</span>`)}${td(c[3], esc(oBranch(r.o)))}${td(c[4], esc(oCashier(r.o)))}${td(c[5], money(r.products), 'end num')}${td(c[6], money(r.fee), 'end num')}${td(c[7], `<b>${money(r.total)}</b>`, 'end num')}${td(c[8], `<span class="date">${fmtDateTime(r.ts)}</span>`)}</tr>`).join('') : empty(9));
       setHtml($('#rpFoot', view), '');
     },
     rows() { return this.data().rows.map(r => [oNum(r.o), oCustName(r.o), oPhone(r.o), oBranch(r.o), oCashier(r.o), r.products, r.fee, r.total, fmtDateTime(r.ts)]); },
@@ -613,7 +660,7 @@ PAGES.reports = view => {
       const q = normQ(f.q); let balance = 0;
       const rows = rpOrders(f.from, f.to, f.branch).slice().sort((a, b) => a.ts - b.ts)
         .filter(({ o }) => !q || normQ(`${oNum(o)} ${oCustName(o)} ${oPhone(o)}`).includes(q))
-        .map(({ o, ts }) => { balance += rpNum(o.total); return { o, ts, products: rpProducts(o), fee: rpNum(o.deliveryFee), total: rpNum(o.total), balance }; });
+        .map(({ o, ts }) => { balance += rpNum(o.total); return { o, ts, products: rpProducts(o), fee: oFee(o), total: rpNum(o.total), balance }; });
       const tot = rows.reduce((a, r) => ({ products: a.products + r.products, fee: a.fee + r.fee, total: a.total + r.total }), { products: 0, fee: 0, total: 0 });
       tot.balance = rows.length ? rows[rows.length - 1].balance : 0;
       return { rows, tot, missing: false };
@@ -625,7 +672,7 @@ PAGES.reports = view => {
       const note = $('#rpNote', view); note.hidden = !d.missing; note.textContent = t('rp.pickPeriod');
       kpis([[t('rp.productsAmount'), d.tot.products, 'money', 'package', 'c1'], [t('rp.deliveryPrice'), d.tot.fee, 'money', 'bike', 'c2'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c3']]);
       setHtml($('#rpHead', view), th([c[0], c[1], c[2], c[3], [c[4], 'end'], [c[5], 'end'], [c[6], 'end'], c[7], [c[8], 'end']]));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr class="${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[2], esc(oCustName(r.o)))}${td(c[3], `<span class="mono">${esc(oPhone(r.o))}</span>`)}${td(c[4], money(r.products), 'end num')}${td(c[5], money(r.fee), 'end num')}${td(c[6], money(r.total), 'end num')}${td(c[7], `<span class="date">${fmtDateTime(r.ts)}</span>`)}${td(c[8], `<b>${money(r.balance)}</b>`, 'end num')}</tr>`).join('')
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[2], esc(oCustName(r.o)))}${td(c[3], `<span class="mono">${esc(oPhone(r.o))}</span>`)}${td(c[4], money(r.products), 'end num')}${td(c[5], money(r.fee), 'end num')}${td(c[6], money(r.total), 'end num')}${td(c[7], `<span class="date">${fmtDateTime(r.ts)}</span>`)}${td(c[8], `<b>${money(r.balance)}</b>`, 'end num')}</tr>`).join('')
         : d.missing ? `<tr class="empty"><td colspan="9"><div class="empty-state">${icon('calendar')}<b>${t('rp.pickPeriod')}</b><small>${t('rp.pickPeriodSub')}</small></div></td></tr>` : empty(9, st.os.q || st.os.branch !== 'all'));
       setHtml($('#rpFoot', view), d.rows.length ? `<tr><td colspan="4">${t('rp.total')}</td><td class="end num">${money(d.tot.products)}</td><td class="end num">${money(d.tot.fee)}</td><td class="end num">${money(d.tot.total)}</td><td class="rp-foot-gap">-</td><td class="end num">${money(d.tot.balance)}</td></tr>` : '');
     },
@@ -686,7 +733,7 @@ PAGES.reports = view => {
         if (f.cashier !== 'all' && String(o.cashierId || '') !== f.cashier) return;
         const value = oItems(o).reduce((s, it) => s + (String(it.productId) === pid ? it.total : 0), 0);
         if (!value) return;
-        const r = { o, ts, value, addr: custOrderAddress(o), type: custOrderType(o), fee: rpNum(o.deliveryFee), total: rpNum(o.total) };
+        const r = { o, ts, value, addr: custOrderAddress(o), type: custOrderType(o), fee: oFee(o), total: rpNum(o.total) };
         if (q && !normQ(`${oNum(o)} ${oBranch(o)} ${oCashier(o)} ${r.type} ${r.addr}`).includes(q)) return;
         rows.push(r);
         if (o.cashierId) cashiers.set(String(o.cashierId), oCashier(o));
@@ -702,7 +749,7 @@ PAGES.reports = view => {
       fill('cashier', `<option value="all">${t('all')}</option>` + optsHtml(d.cashiers, st.tpd.cashier));
       kpis([[t('rp.productsAmount'), d.tot.products, 'money', 'package', 'c1'], [t('o.fee'), d.tot.fee, 'money', 'bike', 'c2'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c3']]);
       setHtml($('#rpHead', view), th(c.slice(0, 5).concat(c.slice(5, 8).map(x => [x, 'end'])).concat([c[8]])));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr class="${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td(c[0], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[1], esc(oBranch(r.o)))}${td(c[2], esc(oCashier(r.o)))}${td(c[3], esc(r.type))}${td(c[4], esc(r.addr))}${td(c[5], money(r.value), 'end num')}${td(c[6], money(r.fee), 'end num')}${td(c[7], `<b>${money(r.total)}</b>`, 'end num')}${td(c[8], `<span class="date">${fmtDateTime(r.ts)}</span>`)}</tr>`).join('') : empty(9, st.tpd.q || st.tpd.cashier !== 'all'));
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td(c[0], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[1], esc(oBranch(r.o)))}${td(c[2], esc(oCashier(r.o)))}${td(c[3], esc(r.type))}${td(c[4], esc(r.addr))}${td(c[5], money(r.value), 'end num')}${td(c[6], money(r.fee), 'end num')}${td(c[7], `<b>${money(r.total)}</b>`, 'end num')}${td(c[8], `<span class="date">${fmtDateTime(r.ts)}</span>`)}</tr>`).join('') : empty(9, st.tpd.q || st.tpd.cashier !== 'all'));
       setHtml($('#rpFoot', view), '');
     },
     rows() { return this.data().rows.map(r => [oNum(r.o), oBranch(r.o), oCashier(r.o), r.type, r.addr, r.value, r.fee, r.total, fmtDateTime(r.ts)]); },
@@ -730,6 +777,7 @@ PAGES.reports = view => {
   }
   function draw() {
     if (!view.isConnected) return;
+    invRef = new Map();
     if (st.view === 'dashboard' || !V[st.view]) drawDash();
     else if (!loading(9)) V[st.view].draw();
     if (picker) drawPicker();
@@ -824,21 +872,36 @@ PAGES.reports = view => {
       draw(); return;
     }
     const metric = e.target.closest('[data-metric]');
-    if (metric) { Object.assign(st.md, { metric: metric.dataset.metric, branch: st.branch, cashier: 'all', customer: 'all', q: '' }); go('metricDetails'); return; }
+    if (metric) { Object.assign(st.md, { metric: metric.dataset.metric, branch: st.branch, cashier: 'all', customer: 'all', q: '', pick: null }); go('metricDetails'); return; }
+    const dr = e.target.closest('[data-drill]');
+    if (dr) { drill(dr.dataset.drill, dr.dataset.label, dr.dataset.val); return; }
     const open = e.target.closest('[data-open]');
-    if (open) { if (open.dataset.open === 'cashierSales') st.csd.cashierId = null; go(open.dataset.open); return; }
+    if (open) {
+      const v = open.dataset.open, f = st[FILTERS[v]];
+      if (v === 'cashierSales') st.csd.cashierId = null;
+      // Opened from the dashboard: the report starts on the same period and branch
+      if (st.view === 'dashboard' && f) { Object.assign(f, periodF()); if ('branch' in f) f.branch = st.branch; if (v === 'sales') { f.sel = new Set(); f.auto = true; } }
+      go(v); return;
+    }
     const tpd = e.target.closest('[data-tpd]');
-    if (tpd) { st.tpd = { productId: tpd.dataset.tpd, branch: tpd.dataset.b || 'all', from: st.tp.from, to: st.tp.to, cashier: 'all', q: '' }; go('topProductDetails'); return; }
+    if (tpd) {
+      const fromDash = st.view === 'dashboard';
+      st.tpdBack = fromDash ? 'dashboard' : 'topProducts';
+      st.tpd = { productId: tpd.dataset.tpd, branch: tpd.dataset.b || 'all', ...(fromDash ? periodF() : { from: st.tp.from, to: st.tp.to }), cashier: 'all', q: '' };
+      go('topProductDetails'); return;
+    }
     const b = e.target.closest('[data-rp]');
     if (b) {
       const act = b.dataset.rp, v = V[st.view];
-      if (act === 'back') go(BACK[st.view] || 'dashboard');
+      if (act === 'back') go(st.view === 'topProductDetails' ? st.tpdBack || 'topProducts' : BACK[st.view] || 'dashboard');
       else if (act === 'cats') openPicker();
       else if (act === 'export' && v && LIVE.loaded(RP_PATHS) && allLoaded()) v.export();
       else if (act === 'print' && v && LIVE.loaded(RP_PATHS) && allLoaded()) v.print();
       return;
     }
     if (e.target.closest('input, button, a, select, label')) return;
+    const invRow = e.target.closest('tr[data-inv]');
+    if (invRow) { const o = invRef.get(invRow.dataset.inv); if (o) invoiceDetails(o); return; }
     const row = e.target.closest('tr[data-go]'); if (!row) return;
     if (st.view === 'sales') {
       const r = V.sales.data().rows.find(x => x.key === row.dataset.go); if (!r) return;
@@ -847,6 +910,7 @@ PAGES.reports = view => {
     } else if (st.view === 'cashierSales') { st.csd.cashierId = row.dataset.go; go('cashierSalesDetails'); }
   });
 
+  view.addEventListener('keydown', e => { const el = e.target.closest('.kpi[data-drill]'); if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } });
   render();
   return () => { unsubs.forEach(u => u()); clearTimeout(deb); closePicker(); };
 };
