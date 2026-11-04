@@ -16,7 +16,8 @@ const S = {
 };
 
 /* ---------- i18n & formatting ---------- */
-const t = k => (I18N[S.lang][k] ?? I18N.ar[k] ?? k);
+// var, not const: some browser extensions add a global `var t` (and `B`), and a const of the same name stops the whole script
+var t = k => (I18N[S.lang][k] ?? I18N.ar[k] ?? k);
 const L = v => (v && typeof v === 'object' && 'ar' in v ? v[S.lang] : v);
 const loc = () => (S.lang === 'ar' ? 'ar-u-nu-latn' : 'en-US');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

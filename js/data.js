@@ -12,7 +12,7 @@ const rint = (r, a, b) => Math.floor(r() * (b - a + 1)) + a;
 const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
 const daysAgo = (r, max) => { const d = new Date(); d.setDate(d.getDate() - rint(r, 0, max)); d.setHours(rint(r, 8, 23), rint(r, 0, 59)); return d.toISOString(); };
 const daysAhead = (r, max) => { const d = new Date(); d.setDate(d.getDate() + rint(r, 3, max)); return d.toISOString(); };
-const B = (ar, en) => ({ ar, en });
+var B = (ar, en) => ({ ar, en });
 
 const POOL = {
   people: [B('أحمد العتيبي', 'Ahmed Alotaibi'), B('سارة القحطاني', 'Sara Alqahtani'), B('محمد الشهري', 'Mohammed Alshehri'), B('نورة الدوسري', 'Noura Aldossari'),
