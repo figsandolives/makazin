@@ -875,6 +875,35 @@ input[type="date"] { direction: ltr; text-align: start; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kanban { grid-template-columns: repeat(4, minmax(270px, 1fr)); }
 }
+/* Small desktop screens (1024–1365 px wide, e.g. a square Windows screen or a
+   laptop with display scaling): a narrower sidebar and a denser page, so the
+   cards stay four in a row and more of each table fits on screen. */
+@media (min-width: 1024px) and (max-width: 1365px) {
+  :root { --sb-w: 232px; --tb-h: 58px; }
+  body { font-size: 14px; }
+  .view { padding: 16px 18px 36px; }
+  .ph { gap: 12px; margin-bottom: 14px; }
+  .ph-ic { width: 44px; height: 44px; border-radius: 13px; } .ph-ic .ic { width: 21px; height: 21px; }
+  .ph h1 { font-size: 1.35rem; }
+  .ph p { font-size: .84rem; }
+  .card { padding: 16px; }
+  .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpi { padding: 13px 15px; }
+  .kpi-top { margin-bottom: 8px; }
+  .kpi-ic { width: 34px; height: 34px; border-radius: 10px; } .kpi-ic .ic { width: 18px; height: 18px; }
+  .kpi-label { font-size: .8rem; }
+  .kpi-val { font-size: 1.3rem; }
+  .toolbar { gap: 8px; padding: 12px 14px; }
+  .search-field { flex: 1 1 220px; }
+  .search-field input, .field input, .select select, .select .cb-input { height: 38px; }
+  .tb-select.cb-has-cap, .rp-bar .tb-select.cb-has-cap, .it-tools .tb-select.cb-has-cap { min-width: 200px; flex: 1 1 200px; }
+  .nav-link, .sb-group-btn { min-height: 40px; }
+}
+/* Short screens (768 px high or so): a lower top bar and header */
+@media (min-width: 1024px) and (max-height: 860px) {
+  :root { --tb-h: 56px; }
+  .ph { margin-bottom: 12px; }
+}
 @media (max-width: 1023px) {
   .only-desk { display: none !important; }
   .only-mobile { display: inline-grid !important; }
@@ -2018,3 +2047,12 @@ section.kd-chips .kd-chip b { font-size: 1.3rem; }
 .kd-share i { flex: 1; height: 6px; border-radius: 99px; background: var(--surface-2); position: relative; overflow: hidden; }
 .kd-share i::before { content: ''; position: absolute; inset-block: 0; inset-inline-start: 0; width: var(--w); background: var(--primary); border-radius: inherit; }
 .kd-share bdi { font-size: .78rem; color: var(--text-3); min-width: 44px; text-align: end; font-variant-numeric: tabular-nums; }
+
+/* Small desktop screens (see "Small desktop screens" above): tighter tables so more columns fit */
+@media (min-width: 1024px) and (max-width: 1365px) {
+  .dt { font-size: .82rem; }
+  .dt td { padding: 7px 9px; }
+  .dt th button { height: 36px; padding-inline: 9px; }
+  .dt.compact th { padding: 7px 9px; }
+  .date-field input { height: 36px; }
+}
