@@ -259,7 +259,7 @@ PAGES.orders = view => {
         <label class="search-field">${icon('search')}<input type="search" id="oQ" placeholder="${t('o.searchPh')}" value="${esc(st.q)}" autocomplete="off"></label>
         <label class="date-field"><small>${t('c.from')}</small><input type="date" id="oFrom" value="${st.from}"></label>
         <label class="date-field"><small>${t('c.to')}</small><input type="date" id="oTo" value="${st.to}"></label>
-        <div class="select tb-select"><select id="oBranch" aria-label="${t('allBranches')}"></select>${icon('chevDown')}</div>
+        <div class="select tb-select"><select id="oBranch" aria-label="${t('c.branch')}"></select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="oCashier" aria-label="${t('o.cashier')}"></select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="oType" aria-label="${t('o.type')}"></select>${icon('chevDown')}</div>
         ${msHtml('oZones')}
@@ -631,7 +631,7 @@ PAGES['online-orders'] = view => {
         <label class="search-field">${icon('search')}<input type="search" id="ooQ" placeholder="${t('o.searchPh')}" value="${esc(st.q)}" autocomplete="off"></label>
         <label class="date-field"><small>${t('c.from')}</small><input type="date" id="ooFrom" value="${st.from}"></label>
         <label class="date-field"><small>${t('c.to')}</small><input type="date" id="ooTo" value="${st.to}"></label>
-        <div class="select tb-select"><select id="ooBranch" aria-label="${t('allBranches')}"></select>${icon('chevDown')}</div>
+        <div class="select tb-select"><select id="ooBranch" aria-label="${t('c.branch')}"></select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="ooCat" aria-label="${t('oo.catalog')}">${['all', 'bakery', 'restaurant'].map(k => `<option value="${k}" ${st.catalog === k ? 'selected' : ''}>${t('oo.cat.' + k)}</option>`).join('')}</select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="ooType" aria-label="${t('o.type')}">${[['all', 'o.allTypes'], ['delivery', 'o.delivery'], ['pickup', 'o.pickup']].map(([k, l]) => `<option value="${k}" ${st.type === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select>${icon('chevDown')}</div>
         ${perHtml(st)}

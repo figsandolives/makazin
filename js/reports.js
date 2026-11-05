@@ -291,7 +291,7 @@ PAGES.reports = view => {
   function dashShell() {
     return `${pageHeader('reports', '', t('rp.sub'))}
       <section class="card rp-bar" data-anim>
-        <div class="select tb-select"><select id="rpBranch" aria-label="${t('allBranches')}"></select>${icon('chevDown')}</div>
+        <div class="select tb-select"><select id="rpBranch" aria-label="${t('c.branch')}"></select>${icon('chevDown')}</div>
         <div class="rp-pc" id="rpPrimary"></div>
         <label class="rp-cmp"><input type="checkbox" id="rpCmp" ${st.cmp ? 'checked' : ''}><span>${t('rp.comparison')}</span></label>
         <div class="rp-pc" id="rpCompare"></div>

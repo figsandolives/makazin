@@ -169,7 +169,7 @@ function itemsPage(view, kind) {
     <section class="card table-card" data-anim>
       <div class="toolbar it-tools">
         <label class="search-field">${icon('search')}<input type="search" id="itQ" placeholder="${t('it.searchPh')}" value="${esc(st.q)}" autocomplete="off"></label>
-        <div class="select tb-select"><select id="itBranch" aria-label="${t('allBranches')}"></select>${icon('chevDown')}</div>
+        <div class="select tb-select"><select id="itBranch" aria-label="${t('c.branch')}"></select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="itCat" aria-label="${t('it.category')}"></select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="itLoc" aria-label="${t('it.storage')}"></select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="itOrigin" aria-label="${t('it.origin')}"></select>${icon('chevDown')}</div>

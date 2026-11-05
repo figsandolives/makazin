@@ -22,6 +22,7 @@
     sel.classList.add('cb-native'); sel.tabIndex = -1; sel.setAttribute('aria-hidden', 'true');
     wrap.classList.add('cb'); wrap.insertBefore(input, sel);
     const cb = sel.__cb = { sel, input, listId };
+    caption(cb);
     // Code that sets .value / .selectedIndex directly keeps the text box in step
     Object.defineProperty(sel, 'value', { configurable: true, get() { return valueDesc.get.call(this); }, set(v) { valueDesc.set.call(this, v); sync(cb); } });
     Object.defineProperty(sel, 'selectedIndex', { configurable: true, get() { return indexDesc.get.call(this); }, set(v) { indexDesc.set.call(this, v); sync(cb); } });
@@ -38,6 +39,21 @@
     sync(cb);
   }
 
+  /* A filter with no visible label (a toolbar choice such as branch or cashier
+     showing just «الكل») writes its name inside the field, before the value. */
+  const capRO = typeof ResizeObserver === 'function' ? new ResizeObserver(es => es.forEach(e => fitCap(e.target))) : null;
+  function fitCap(cap) { const input = cap.__input; if (input && cap.offsetWidth) input.style.paddingInlineStart = `${cap.offsetWidth + 22}px`; }
+  function caption(cb) {
+    const { sel, input } = cb, wrap = sel.parentElement, name = (sel.getAttribute('aria-label') || '').trim();
+    const labelled = wrap.closest('.field, label') || (sel.id && document.querySelector(`label[for="${CSS.escape(sel.id)}"], label[for="${CSS.escape(input.id)}"]`));
+    if (!name || labelled || wrap.querySelector('.cb-cap')) return;
+    const cap = document.createElement('span');
+    cap.className = 'cb-cap'; cap.textContent = name; cap.setAttribute('aria-hidden', 'true'); cap.__input = input;
+    wrap.classList.add('cb-has-cap'); wrap.insertBefore(cap, input);
+    if (capRO) capRO.observe(cap); else requestAnimationFrame(() => fitCap(cap));
+    // The page may change the field's name later (language switch)
+    new MutationObserver(() => { cap.textContent = (sel.getAttribute('aria-label') || '').trim(); }).observe(sel, { attributes: true, attributeFilter: ['aria-label'] });
+  }
   const optionsOf = sel => [...sel.options];
   const labelOf = sel => { const o = sel.options[sel.selectedIndex]; return o && o.value !== '' ? o.textContent.trim() : ''; };
   function sync(cb) {
