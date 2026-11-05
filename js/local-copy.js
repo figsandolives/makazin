@@ -1,7 +1,7 @@
 /* Local copy of the system's data: downloaded once (the «تحميل» screen), saved on this device
    (IndexedDB) and kept live by the server's change feed. Every page then reads from memory, and
    the next visit opens the saved copy and only fetches what changed since it was saved.
-   Logging out deletes the copy from the device. Not used in ?mock. */
+   The copy stays on the device after logging out (the next sign-in opens it). Not used in ?mock. */
 (() => {
   // Every collection a page reads (a missing one still loads from the server as before)
   const PATHS = ['orders', 'production', 'transferRequests', 'customers', 'products', 'stockIssue', 'inventoryCount',
@@ -60,12 +60,12 @@
   LIVE.copySupported = supported;
   LIVE.copyReady = () => supported && client().pinned().length > 0;
 
-  /* Opens the copy saved on this device for this user; false when there is none */
+  /* Opens the copy saved on this device; false when there is none */
   LIVE.openCopy = async () => {
     if (!supported || !LIVE.user) return false;
     const db = await open(), tx = db.transaction(['paths', 'meta'], 'readonly');
     const info = await get(tx.objectStore('meta'), 'info');
-    if (!info || info.user !== LIVE.user.id || !Array.isArray(info.paths) || !info.seq) return false;
+    if (!info || !Array.isArray(info.paths) || !info.seq) return false;
     const values = {};
     await Promise.all(info.paths.map(async p => { values[p] = (await get(tx.objectStore('paths'), p)) ?? null; }));
     client().pin(values, info.seq);
@@ -102,6 +102,10 @@
     try { const db = await open(), tx = db.transaction(['paths', 'meta'], 'readwrite'); tx.objectStore('paths').clear(); tx.objectStore('meta').clear(); await done(tx); } catch (e) {}
   };
 
+  // Logging out saves what changed and closes the copy in memory; it stays on the device
   const logout = LIVE.logout;
-  LIVE.logout = () => { LIVE.dropCopy(); logout(); };
+  LIVE.logout = () => {
+    if (supported) { saveNow(); clearTimeout(timer); timer = 0; client().unpinAll(); }
+    logout();
+  };
 })();
