@@ -877,6 +877,7 @@ Object.assign(I18N.ar, {
   'pl.wait': 'انتظر قليلاً', 'pl.loading': 'جارٍ تحميل بياناتك...', 'pl.done': 'اكتمل التحميل',
   'pl.loaded': 'تم تحميل', 'pl.remaining': 'المتبقي', 'pl.timeLeft': 'الوقت المتبقي', 'pl.of': 'من',
   'pl.mb': 'م.ب', 'pl.kb': 'ك.ب', 'pl.sec': 'ث', 'pl.min': 'د', 'pl.lessSec': 'أقل من ثانية',
+  printSent: 'تم الإرسال إلى الطابعة', printFailed: 'تعذرت الطباعة المباشرة، اختر الطابعة من النافذة',
   'pl.failed': 'تعذر تحميل البيانات من السيرفر', 'pl.netFailed': 'تعذر الاتصال بالسيرفر، تأكد من الإنترنت', 'pl.retry': 'إعادة المحاولة'
 });
 Object.assign(I18N.en, {
@@ -884,5 +885,6 @@ Object.assign(I18N.en, {
   'pl.wait': 'Please wait', 'pl.loading': 'Loading your data...', 'pl.done': 'Download complete',
   'pl.loaded': 'Downloaded', 'pl.remaining': 'Remaining', 'pl.timeLeft': 'Time left', 'pl.of': 'of',
   'pl.mb': 'MB', 'pl.kb': 'KB', 'pl.sec': 's', 'pl.min': 'min', 'pl.lessSec': 'under a second',
+  printSent: 'Sent to the printer', printFailed: 'Direct printing failed — choose the printer in the dialog',
   'pl.failed': 'Could not load the data from the server', 'pl.netFailed': 'Could not reach the server — check the internet', 'pl.retry': 'Try again'
 });

@@ -119,6 +119,17 @@ function printDoc(title, metaPairs, cols, rows, footer, opts = {}) {
 }
 /* Prints a full HTML document through a hidden frame (no pop-up window to block) */
 function printHtml(doc) {
+  // In the Windows app: straight to the printer chosen in its settings (80mm receipts to the
+  // receipt printer, the rest to the A4 printer), as the old site did. A failure falls back to the dialog.
+  if (window.figsDesktop && window.figsDesktop.isDesktopApp) {
+    const type = /size:\s*80mm/i.test(doc) ? 'receipt' : 'a4';
+    window.figsDesktop.printHtml({ html: doc, type, silent: true })
+      .then(() => toast(t('printSent')), () => { toast(t('printFailed'), { tone: 'danger', ic: 'alert' }); printFrame(doc); });
+    return;
+  }
+  printFrame(doc);
+}
+function printFrame(doc) {
   const f = document.createElement('iframe');
   f.style.cssText = 'position:fixed;width:0;height:0;border:0;opacity:0';
   document.body.appendChild(f);
