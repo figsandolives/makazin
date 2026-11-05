@@ -111,9 +111,9 @@ PAGES.production = view => {
     const rows = all(), r30 = rows.filter(x => inLast30(x.r));
     const soon = Date.now() + 7 * 86400000;
     setKpis($('#prK', view), [
-      kpiCard({ label: t('iv.pr.k30'), value: r30.length, ic: 'factory', tone: 'c1' }),
-      kpiCard({ label: t('iv.pr.kQty30'), value: r30.reduce((s, x) => s + x.items.reduce((a, i) => a + i.qty, 0), 0), ic: 'box', tone: 'c2' }),
-      kpiCard({ label: t('iv.pr.kSoon'), value: rows.filter(x => x.items.some(i => { const e = i.expiryDate || x.r.expiryDate; const ts = e ? new Date(`${e}T23:59:59`).getTime() : 0; return ts >= Date.now() && ts <= soon; })).length, ic: 'clock', tone: 'c4' }),
+      kpiCard({ label: t('iv.pr.k30'), value: r30.length, ic: 'factory', tone: 'c1', drill: 'v30' }),
+      kpiCard({ label: t('iv.pr.kQty30'), value: r30.reduce((s, x) => s + x.items.reduce((a, i) => a + i.qty, 0), 0), ic: 'box', tone: 'c2', drill: 'qty30' }),
+      kpiCard({ label: t('iv.pr.kSoon'), value: rows.filter(x => x.items.some(i => { const e = i.expiryDate || x.r.expiryDate; const ts = e ? new Date(`${e}T23:59:59`).getTime() : 0; return ts >= Date.now() && ts <= soon; })).length, ic: 'clock', tone: 'c4', drill: 'soon' }),
       kpiAll(rows, t('iv.kTotal'))
     ].join(''), first);
     setHtml($('#prBr', view), `<option value="all">${t('iv.allBranches')}</option>` + Object.entries(LIVE.cache.branches || {}).map(([id, b]) => `<option value="${esc(id)}" ${st.branch === id ? 'selected' : ''}>${esc(nameOf(b) || id)}</option>`).join(''));
@@ -419,10 +419,47 @@ PAGES.production = view => {
     else if (a === 'edit') openForm({ id, r: x.r });
     else if (a === 'delete') remove(x);
   });
+  // Card pages: production of the last 30 days, quantities per product, and batches expiring within 7 days
+  const closeDrill = kpiDrills(view, { paths: PR_PATHS, ready: () => LIVE.loaded(PR_PATHS), build: kind => {
+    const rows = all(), r30 = rows.filter(x => inLast30(x.r)), per = t('kd.last30'), q3 = v => fmtNum(v, 3);
+    const open = id => { const x = all().find(y => y.id === id); if (x) details(x); };
+    const unitOf = it => (it.unitId && unitName(it.unitId)) || it.unitName || '';
+    if (kind === 'v30') return { sub: `${t('production')} · ${per}`, ic: 'factory', file: 'production-30d.xlsx', onRow: open,
+      chips: [[t('kd.vouchers'), fmtNum(r30.length)], [t('iv.totalQty'), q3(r30.reduce((s, x) => s + x.items.reduce((a, i) => a + i.qty, 0), 0))], [t('kd.branch'), fmtNum(new Set(r30.map(x => x.r.branchId)).size)]],
+      cols: [{ h: t('iv.pr.number') }, { h: t('iv.pr.product') }, { h: t('c.qty'), end: 1 }, { h: t('c.branch') }, { h: t('iv.staffOne') }, { h: t('iv.expiry') }, { h: t('c.date') }],
+      rows: r30.map(x => ({ id: x.id, text: [x.r.productionNumber, ivStaffLabel(x.r), branchLabel(x.r.branchId), ...x.items.map(prName)].join(' '),
+        cells: [`<b class="mono">#${esc(x.r.productionNumber ?? '-')}</b>`, `<span class="cell-2 pr-names">${x.items.map(it => `<b>${esc(prName(it))}</b>`).join('')}</span>`, `<span class="cell-2">${x.items.map(it => `<b class="num">${esc(prQty(it))}</b>`).join('')}</span>`,
+          esc(branchLabel(x.r.branchId) || x.r.branchName || '-'), esc(ivStaffLabel(x.r)), `<span class="mono">${esc(x.r.expiryDate || '-')}</span>`, `<span class="date">${fmtDateTime(x.r.createdAt)}</span>`],
+        x: { [t('iv.pr.number')]: x.r.productionNumber ?? '', [t('iv.pr.product')]: x.items.map(prName).join('، '), [t('c.qty')]: x.items.reduce((a, i) => a + i.qty, 0), [t('c.branch')]: branchLabel(x.r.branchId) || '', [t('iv.staffOne')]: ivStaffLabel(x.r), [t('iv.expiry')]: x.r.expiryDate || '', [t('c.date')]: fmtDateTime(x.r.createdAt) } })) };
+    if (kind === 'qty30') {
+      const m = new Map();
+      r30.forEach(x => x.items.forEach(it => { const k = it.itemId || prName(it); const g = m.get(k) || { it, qty: 0, ids: new Set() }; g.qty += it.qty; g.ids.add(x.id); m.set(k, g); }));
+      const list = [...m.values()].sort((a, b) => b.qty - a.qty), tot = list.reduce((s, g) => s + g.qty, 0);
+      return { sub: `${t('production')} · ${t('kd.byItem')} · ${per}`, ic: 'box', file: 'production-qty-30d.xlsx',
+        chips: [[t('kd.itemsN'), fmtNum(list.length)], [t('iv.totalQty'), q3(tot)], [t('kd.vouchers'), fmtNum(r30.length)]],
+        cols: [{ h: '#' }, { h: t('iv.pr.product') }, { h: t('kd.unit') }, { h: t('kd.vouchers'), end: 1 }, { h: t('iv.totalQty'), end: 1 }, { h: t('kd.share') }],
+        rows: list.map((g, i) => { const pct = tot ? (g.qty / tot) * 100 : 0; return { id: null, text: prName(g.it),
+          cells: [`<span class="muted">${i + 1}</span>`, `<b>${esc(prName(g.it))}</b>`, esc(unitOf(g.it) || '—'), fmtNum(g.ids.size), `<b>${q3(g.qty)}</b>`, `<span class="kd-share"><i style="--w:${pct.toFixed(1)}%"></i><bdi dir="ltr">${fmtNum(pct, 1)}%</bdi></span>`],
+          x: { [t('iv.pr.product')]: prName(g.it), [t('kd.unit')]: unitOf(g.it), [t('kd.vouchers')]: g.ids.size, [t('iv.totalQty')]: +g.qty.toFixed(3) } }; }) };
+    }
+    if (kind === 'soon') {
+      const now = Date.now(), soon = now + 7 * 86400000;
+      const lines = rows.flatMap(x => x.items.map(it => { const e = it.expiryDate || x.r.expiryDate; const ts = e ? new Date(`${e}T23:59:59`).getTime() : 0; return { x, it, e, ts }; }))
+        .filter(l => l.ts >= now && l.ts <= soon).sort((a, b) => a.ts - b.ts);
+      const days = l => Math.max(0, Math.ceil((l.ts - now) / 86400000) - 1);
+      return { sub: t('kd.soonSub'), ic: 'clock', file: 'production-expiring-7d.xlsx', onRow: open, empty: t('kd.soonNone'),
+        chips: [[t('kd.lines'), fmtNum(lines.length), 'danger'], [t('kd.today'), fmtNum(lines.filter(l => days(l) === 0).length), 'danger']],
+        cols: [{ h: t('iv.pr.product') }, { h: t('c.qty'), end: 1 }, { h: t('iv.expiry') }, { h: t('kd.left') }, { h: t('c.branch') }, { h: t('iv.pr.number') }],
+        rows: lines.map(l => ({ id: l.x.id, text: `${prName(l.it)} ${l.x.r.productionNumber || ''} ${branchLabel(l.x.r.branchId)}`,
+          cells: [`<b>${esc(prName(l.it))}</b>`, esc(prQty(l.it)), `<span class="mono">${esc(l.e)}</span>`, `<span class="badge tone-${days(l) <= 1 ? 'danger' : 'warning'}">${days(l) === 0 ? t('kd.today') : t('kd.daysLeft').replace('{n}', days(l))}</span>`, esc(branchLabel(l.x.r.branchId) || '-'), `<span class="mono">#${esc(l.x.r.productionNumber ?? '-')}</span>`],
+          x: { [t('iv.pr.product')]: prName(l.it), [t('c.qty')]: l.it.qty, [t('iv.expiry')]: l.e, [t('c.branch')]: branchLabel(l.x.r.branchId) || '', [t('iv.pr.number')]: l.x.r.productionNumber ?? '' } })) };
+    }
+    return null;
+  } });
   const unsub = LIVE.watch(PR_PATHS, draw);
   draw();
   takeDoc('production', PR_PATHS, id => { const x = all().find(g => g.id === id); if (x) details(x); });
-  return () => { unsub(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); freshDrawer(false); };
 };
 
 /* =====================================================================
@@ -534,8 +571,8 @@ PAGES.receiving = view => {
     const body = $('#rcBody', view); if (!body) return;
     if (!LIVE.loaded(PATHS)) { setHtml(body, skeletonRows(5, 7)); $('#rcK', view).innerHTML = skeletonKpis(); return; }
     const rows = all(), r30 = rows.filter(x => inLast30(x.r));
-    setKpis($('#rcK', view), [kpiCard({ label: t('iv.rc.k30'), value: r30.length, ic: 'in', tone: 'c1' }), kpiCard({ label: t('iv.rc.kItems30'), value: r30.reduce((s, x) => s + x.items.length, 0), ic: 'box', tone: 'c2' }),
-      kpiCard({ label: t('iv.rc.kSources30'), value: new Set(r30.map(x => normQ(x.r.sourceName)).filter(Boolean)).size, ic: 'truck', tone: 'c4' }), kpiAll(rows, t('iv.kTotal'))].join(''), first);
+    setKpis($('#rcK', view), [kpiCard({ label: t('iv.rc.k30'), value: r30.length, ic: 'in', tone: 'c1', drill: 'v30' }), kpiCard({ label: t('iv.rc.kItems30'), value: r30.reduce((s, x) => s + x.items.length, 0), ic: 'box', tone: 'c2', drill: 'items30' }),
+      kpiCard({ label: t('iv.rc.kSources30'), value: new Set(r30.map(x => normQ(x.r.sourceName)).filter(Boolean)).size, ic: 'truck', tone: 'c4', drill: 'src30' }), kpiAll(rows, t('iv.kTotal'))].join(''), first);
     const list = filtered(rows);
     setHtml($('#rcPager', view), pagerHtml(st, list.length));
     const slice = list.slice((st.page - 1) * st.per, st.page * st.per);
@@ -666,9 +703,32 @@ PAGES.receiving = view => {
     const id = b.closest('tr').dataset.id, r = (LIVE.cache.receiving || {})[id]; if (!r) return;
     ({ view: () => details(id), print: () => printRc(r), edit: () => openForm(id), delete: () => remove(id) })[b.dataset.rc]();
   });
+  // Card pages: receiving of the last 30 days — vouchers, received lines, and sources
+  const closeDrill = kpiDrills(view, { paths: PATHS, ready: () => LIVE.loaded(PATHS), build: kind => {
+    const r30 = all().filter(x => inLast30(x.r)), per = t('kd.last30'), q3 = v => fmtNum(v, 3);
+    const lines = () => r30.flatMap(x => x.items.map(it => ({ x, it })));
+    if (kind === 'v30') return { sub: `${t('receiving')} · ${per}`, ic: 'in', file: 'receiving-30d.xlsx', onRow: details,
+      chips: [[t('kd.vouchers'), fmtNum(r30.length)], [t('kd.lines'), fmtNum(lines().length)], [t('iv.rc.source'), fmtNum(new Set(r30.map(x => normQ(x.r.sourceName)).filter(Boolean)).size)]],
+      cols: [{ h: t('iv.rc.number') }, { h: t('iv.rc.source') }, { h: t('pm.storekeeper') }, { h: t('c.items'), end: 1 }, { h: t('storage-locations') }, { h: t('c.date') }],
+      rows: r30.map(x => ({ id: x.id, text: [x.r.receivingNumber, x.r.sourceName, x.r.storekeeperName, ...x.items.map(liveItemName)].join(' '),
+        cells: [`<b class="mono">#${esc(x.r.receivingNumber ?? '-')}</b>`, `<b>${esc(x.r.sourceName || '-')}</b>`, esc(x.r.storekeeperName || '-'), fmtNum(x.items.length), esc(locsOf(x.items).join('، ') || '—'), `<span class="date">${fmtDateTime(x.r.createdAt)}</span>`],
+        x: { [t('iv.rc.number')]: x.r.receivingNumber ?? '', [t('iv.rc.source')]: x.r.sourceName || '', [t('pm.storekeeper')]: x.r.storekeeperName || '', [t('c.items')]: x.items.length, [t('storage-locations')]: locsOf(x.items).join('، '), [t('c.date')]: fmtDateTime(x.r.createdAt) } })) };
+    if (kind === 'items30') {
+      const ls = lines();
+      return { sub: `${t('receiving')} · ${per}`, ic: 'box', file: 'receiving-lines-30d.xlsx', onRow: details,
+        chips: [[t('kd.lines'), fmtNum(ls.length)], [t('kd.itemsN'), fmtNum(new Set(ls.map(l => l.it.itemId || liveItemName(l.it))).size)], [t('kd.vouchers'), fmtNum(r30.length)]],
+        cols: [{ h: t('kd.item') }, { h: t('c.qty'), end: 1 }, { h: t('kd.unit') }, { h: t('storage-locations') }, { h: t('iv.rc.source') }, { h: t('iv.rc.number') }, { h: t('c.date') }],
+        rows: ls.map(l => { const u = (l.it.unitId && unitName(l.it.unitId)) || l.it.unitName || ''; return { id: l.x.id, text: `${liveItemName(l.it)} ${l.x.r.sourceName || ''} ${l.x.r.receivingNumber || ''}`,
+          cells: [`<b>${esc(liveItemName(l.it))}</b>`, q3(Number(l.it.qty || 0)), esc(u || '—'), esc(locName(l.it.storageLocationId) || '—'), esc(l.x.r.sourceName || '-'), `<span class="mono">#${esc(l.x.r.receivingNumber ?? '-')}</span>`, `<span class="date">${fmtDateTime(l.x.r.createdAt)}</span>`],
+          x: { [t('kd.item')]: liveItemName(l.it), [t('c.qty')]: Number(l.it.qty || 0), [t('kd.unit')]: u, [t('storage-locations')]: locName(l.it.storageLocationId) || '', [t('iv.rc.source')]: l.x.r.sourceName || '', [t('iv.rc.number')]: l.x.r.receivingNumber ?? '', [t('c.date')]: fmtDateTime(l.x.r.createdAt) } }; }) };
+    }
+    if (kind === 'src30') return kdBreakdown({ title: '', sub: `${t('receiving')} · ${per}`, ic: 'truck', file: 'receiving-sources-30d.xlsx', groupH: t('iv.rc.source'), countH: t('kd.vouchers'), valueH: t('kd.lines'), kind: 'num',
+      items: kdGroup(r30, x => normQ(x.r.sourceName) || '-', x => x.r.sourceName || '-', x => x.items.length) });
+    return null;
+  } });
   const unsub = LIVE.watch(PATHS, draw);
   draw();
-  return () => { unsub(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); freshDrawer(false); };
 };
 
 /* =====================================================================
@@ -719,8 +779,8 @@ PAGES['cashier-requests'] = view => {
     const body = $('#crBody', view); if (!body) return;
     if (!LIVE.loaded(PATHS)) { setHtml(body, skeletonRows(5, 7)); $('#crK', view).innerHTML = skeletonKpis(); return; }
     const rows = all(), cnt = s => rows.filter(x => crStatus(x.r) === s).length;
-    setKpis($('#crK', view), [kpiCard({ label: t('iv.cr.s.pending'), value: cnt('pending'), ic: 'clock', tone: 'c4' }), kpiCard({ label: t('iv.cr.s.accepted'), value: cnt('accepted'), ic: 'clipcheck', tone: 'c2' }),
-      kpiCard({ label: t('iv.cr.s.sent'), value: cnt('sent'), ic: 'send', tone: 'c1' }), kpiAll(rows, t('iv.cr.kTotal'))].join(''), first);
+    setKpis($('#crK', view), [kpiCard({ label: t('iv.cr.s.pending'), value: cnt('pending'), ic: 'clock', tone: 'c4', drill: 'pending' }), kpiCard({ label: t('iv.cr.s.accepted'), value: cnt('accepted'), ic: 'clipcheck', tone: 'c2', drill: 'accepted' }),
+      kpiCard({ label: t('iv.cr.s.sent'), value: cnt('sent'), ic: 'send', tone: 'c1', drill: 'sent' }), kpiAll(rows, t('iv.cr.kTotal'))].join(''), first);
     const list = filtered(rows);
     setHtml($('#crPager', view), pagerHtml(st, list.length));
     const slice = list.slice((st.page - 1) * st.per, st.page * st.per);
@@ -863,8 +923,22 @@ PAGES['cashier-requests'] = view => {
     const id = b.closest('tr').dataset.id, r = (LIVE.cache.transferRequests || {})[id]; if (!r) return;
     ({ accept: () => accept(id), deliver: () => deliver(id), view: () => details(id), print: () => printFull(r), sheet: () => printSheet(r) })[b.dataset.cr]();
   });
+  // Card pages: the requests in one status, oldest waiting first, with their items
+  const closeDrill = kpiDrills(view, { paths: PATHS, ready: () => LIVE.loaded(PATHS), build: kind => {
+    if (!['pending', 'accepted', 'sent'].includes(kind)) return null;
+    const list = all().filter(x => crStatus(x.r) === kind).sort((a, b) => (a.r.createdAt || 0) - (b.r.createdAt || 0));
+    const age = x => Math.floor((Date.now() - (x.r.createdAt || Date.now())) / 86400000);
+    return { sub: t('iv.cr.sub'), ic: { pending: 'clock', accepted: 'clipcheck', sent: 'send' }[kind], file: `cashier-requests-${kind}.xlsx`, onRow: details,
+      chips: [[t('kd.rows'), fmtNum(list.length)], [t('kd.lines'), fmtNum(list.reduce((s2, x) => s2 + x.items.length, 0))], [t('kd.branch'), fmtNum(new Set(list.map(x => crBranch(x.r))).size)]],
+      cols: [{ h: t('iv.cr.number') }, { h: t('c.branch') }, { h: t('iv.cr.cashier') }, { h: t('c.items') }, { h: t('c.date') }, { h: t('kd.waiting') }],
+      rows: list.map(x => ({ id: x.id, text: [x.r.requestNumber, crBranch(x.r), x.r.cashierName, ...x.items.map(i => i.nameAr || i.name || '')].join(' '),
+        cells: [`<b class="mono">${esc(x.r.requestNumber || '-')}</b>`, esc(crBranch(x.r)), esc(x.r.cashierName || '-'),
+          `<span class="cell-2 items-cell"><b>${x.items.length} ${t('pu.itemsWord')}</b><small>${esc(x.items.slice(0, 3).map(i => nameOf(i) || i.name || '-').join('، '))}${x.items.length > 3 ? '…' : ''}</small></span>`,
+          `<span class="date">${fmtDateTime(x.r.createdAt)}</span>`, age(x) ? `<span class="badge tone-${age(x) >= 2 ? 'danger' : 'warning'}">${t('kd.daysN').replace('{n}', age(x))}</span>` : `<span class="badge tone-neutral">${t('kd.todayShort')}</span>`],
+        x: { [t('iv.cr.number')]: x.r.requestNumber || '', [t('c.branch')]: crBranch(x.r), [t('iv.cr.cashier')]: x.r.cashierName || '', [t('c.items')]: x.items.map(i => `${nameOf(i) || i.name || '-'} × ${i.qty ?? ''}`).join('، '), [t('c.date')]: fmtDateTime(x.r.createdAt) } })) };
+  } });
   const unsub = LIVE.watch(PATHS, draw);
   draw();
   takeDoc('cashier-requests', PATHS, details);
-  return () => { unsub(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); freshDrawer(false); };
 };

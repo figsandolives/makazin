@@ -51,7 +51,7 @@ const POOL = {
 };
 
 const NAV = [
-  { section: 'sec.main', items: ['reports', 'orders', 'employee-journal', 'online-orders', 'customers', 'products', 'product-info', 'product-categories', 'units', 'item-card', 'storage-locations', 'sticker-maker', 'production-tracking'] },
+  { section: 'sec.main', items: ['reports', 'orders', 'online-orders', 'employee-journal', 'customers', 'products', 'product-info', 'product-categories', 'units', 'item-card', 'storage-locations', 'sticker-maker', 'production-tracking'] },
   { group: 'grp.inventory', icon: 'warehouse', items: ['stock-materials', 'material-categories', 'issue', 'production', 'production-staff', 'stocktake', 'receiving', 'transfers', 'cashier-requests', 'return-warehouse', 'damaged-returns'] },
   { group: 'grp.suppliers', icon: 'truck', items: ['suppliers', 'purchases', 'supplier-returns'] },
   { group: 'grp.admin', icon: 'shield', items: ['pending-movements', 'devices', 'users', 'tables', 'branches', 'delivery-fees', 'discounts', 'order-types', 'payment-methods'] }

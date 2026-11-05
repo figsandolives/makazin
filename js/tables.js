@@ -83,8 +83,8 @@ PAGES.tables = view => {
     const orders = list.reduce((s, x) => s + x.orders, 0), revenue = list.reduce((s, x) => s + x.revenue, 0);
     setKpis($('#tbK', view), [
       kpiCard({ label: t('tb.count'), value: list.length, ic: 'utensils', tone: 'c1' }),
-      kpiCard({ label: t('tb.orders'), value: orders, ic: 'receipt', tone: 'c2' }),
-      kpiCard({ label: t('tb.revenue'), value: revenue, kind: 'money', ic: 'chart', tone: 'c3' })
+      kpiCard({ label: t('tb.orders'), value: orders, ic: 'receipt', tone: 'c2', drill: 'orders' }),
+      kpiCard({ label: t('tb.revenue'), value: revenue, kind: 'money', ic: 'chart', tone: 'c3', drill: 'revenue' })
     ].join(''), first);
     setHtml($('#tbPager', view), pagerHtml(st, list.length));
     const slice = list.slice((st.page - 1) * st.per, st.page * st.per);
@@ -249,5 +249,20 @@ PAGES.tables = view => {
   mount();
   const unsub = LIVE.watch(PATHS, draw);
   draw();
-  return () => { unsub(); freshDrawer(false); };
+  // Card pages: the invoices behind the tables shown (same branch/search/date filters)
+  const closeDrill = kpiDrills(view, { paths: PATHS, ready: () => LIVE.loaded(PATHS), build: kind => {
+    const byTable = tableOrders(), shown = rows();
+    const list = shown.flatMap(x => (byTable.get(keyOf(x.branchId, x.no)) || []).map(o => ({ ...o, _table: x.no }))).sort((a, b) => oTime(b) - oTime(a));
+    const range = st.from || st.to ? `${st.from || '…'} → ${st.to || '…'}` : t('tb.allTime');
+    if (kind === 'orders') {
+      const cfg = kdOrders({ title: t('tb.orders'), sub: `${t('kd.filtered')} · ${range}`, ic: 'receipt', file: 'table-orders.xlsx', list });
+      cfg.cols.splice(1, 0, { h: t('tb.number') });
+      cfg.rows.forEach((r, i) => { r.cells.splice(1, 0, `<span class="tb-no">${esc(list[i]._table)}</span>`); r.x = { [t('tb.number')]: list[i]._table, ...r.x }; r.text += ` ${list[i]._table}`; });
+      return cfg;
+    }
+    if (kind === 'revenue') return kdBreakdown({ title: `${t('tb.revenue')} ${t('kd.byBranch')}`, sub: `${t('kd.filtered')} · ${range}`, ic: 'chart', file: 'tables-revenue-by-branch.xlsx',
+      groupH: t('kd.branch'), countH: t('kd.orders'), valueH: t('tb.revenue'), items: kdGroup(list, o => o.branchId, o => branchLabel(o.branchId), oTotal) });
+    return null;
+  } });
+  return () => { unsub(); closeDrill(); freshDrawer(false); };
 };

@@ -199,10 +199,10 @@ PAGES.purchases = view => {
     const month = Date.now() - 30 * 86400000;
     const recv30 = Object.values(LIVE.cache.purchaseReceipts || {}).filter(r => (r.createdAt || 0) >= month).reduce((s, r) => s + items$(r.items).reduce((a, it) => a + Number(it.qty || 0) * Number(it.cost ?? it.unitPrice ?? 0), 0), 0);
     setKpis($('#puK', view), [
-      kpiCard({ label: t('pu.kPending'), value: rows.filter(r => r.status === 'pending').length, ic: 'clock', tone: 'c4' }),
-      kpiCard({ label: t('pu.kReady'), value: rows.filter(r => r.status === 'approved' || r.status === 'partial').length, ic: 'truck', tone: 'c2' }),
-      kpiCard({ label: t('pu.kOpenValue'), value: rows.filter(r => ['pending', 'approved', 'partial'].includes(r.status)).reduce((s, r) => s + r.total, 0), kind: 'money', ic: 'wallet', tone: 'c1' }),
-      kpiCard({ label: t('pu.kReceived30'), value: recv30, kind: 'money', ic: 'in', tone: 'c3' })
+      kpiCard({ label: t('pu.kPending'), value: rows.filter(r => r.status === 'pending').length, ic: 'clock', tone: 'c4', drill: 'pending' }),
+      kpiCard({ label: t('pu.kReady'), value: rows.filter(r => r.status === 'approved' || r.status === 'partial').length, ic: 'truck', tone: 'c2', drill: 'ready' }),
+      kpiCard({ label: t('pu.kOpenValue'), value: rows.filter(r => ['pending', 'approved', 'partial'].includes(r.status)).reduce((s, r) => s + r.total, 0), kind: 'money', ic: 'wallet', tone: 'c1', drill: 'open' }),
+      kpiCard({ label: t('pu.kReceived30'), value: recv30, kind: 'money', ic: 'in', tone: 'c3', drill: 'recv30' })
     ].join(''), first);
     const cnt = s => (s === 'all' ? rows.length : rows.filter(r => r.status === s).length);
     patchChildren($('#puChips', view), ['all', 'pending', 'approved', 'partial', 'received', 'rejected'].map(s =>
@@ -621,10 +621,34 @@ PAGES.purchases = view => {
     ({ view: details, print: printAny, edit: openForm, receive: openReceive, delete: remove })[b.dataset.pu](rec);
   });
 
+  // Card pages: requests waiting / ready, open value per supplier, and what was received in 30 days
+  const closeDrill = kpiDrills(view, { paths: [...PU_PATHS, ...PU_CATALOG], ready: () => LIVE.loaded(PU_PATHS), build: kind => {
+    const rows = all(), sub = t('pu.sub');
+    if (kind === 'pending') return kdPurchases({ sub, ic: 'clock', file: 'purchases-pending.xlsx', onRow: id => { const r = all().find(x => x.id === id); if (r) details(r); }, list: rows.filter(r => r.status === 'pending') });
+    if (kind === 'ready') return kdPurchases({ sub, ic: 'truck', file: 'purchases-ready.xlsx', onRow: id => { const r = all().find(x => x.id === id); if (r) details(r); }, list: rows.filter(r => r.status === 'approved' || r.status === 'partial') });
+    if (kind === 'open') return kdBreakdown({ title: '', sub: `${t('pu.kOpenValue')} · ${t('kd.bySupplier')}`, ic: 'wallet', file: 'purchases-open-by-supplier.xlsx', groupH: t('c.supplier'), countH: t('kd.rows'), valueH: t('pm.value'),
+      items: kdGroup(rows.filter(r => OPEN.includes(r.status)), r => r.p.supplierId || supName(r.p), r => supName(r.p), r => r.total) });
+    if (kind === 'recv30') {
+      const month = Date.now() - 30 * 86400000, pu = LIVE.cache.purchases || {};
+      const rcs = Object.entries(LIVE.cache.purchaseReceipts || {}).filter(([, r]) => r && (r.createdAt || 0) >= month).map(([id, r]) => {
+        const p = pu[r.purchaseId] || {}, its = items$(r.items);
+        return { id, r, p, its, v: its.reduce((a, it) => a + Number(it.qty || 0) * Number(it.cost ?? it.unitPrice ?? 0), 0) };
+      }).sort((a, b) => (b.r.createdAt || 0) - (a.r.createdAt || 0));
+      const tot = rcs.reduce((a, x) => a + x.v, 0);
+      return { sub: `${t('pu.receipts')} · ${t('kd.last30')}`, ic: 'in', file: 'purchase-receipts-30d.xlsx',
+        onRow: id => { const x = rcs.find(y => y.id === id); const p = x && pu[x.r.purchaseId]; if (p) details(puRec(x.r.purchaseId, p)); },
+        chips: [[t('pu.receipts'), fmtNum(rcs.length)], [t('pu.receiveValue'), fmtMoney(tot)], [t('c.supplier'), fmtNum(new Set(rcs.map(x => x.p.supplierId || supName(x.p))).size)]],
+        cols: [{ h: t('pu.receiptNo') }, { h: t('pu.number') }, { h: t('c.supplier') }, { h: t('c.items'), end: 1 }, { h: t('pu.receiveValue'), end: 1 }, { h: t('c.date') }],
+        rows: rcs.map(x => ({ id: x.id, text: [x.r.receiptNumber, x.p.purchaseNumber, supName(x.p), ...x.its.map(i => i.name || '')].join(' '),
+          cells: [`<b class="mono">#${esc(x.r.receiptNumber ?? '-')}</b>`, `<span class="mono">#${esc(x.p.purchaseNumber ?? '-')}</span>`, `<b>${esc(supName(x.p))}</b>`, fmtNum(x.its.length), fmtMoney(x.v), `<span class="date">${fmtDateTime(x.r.createdAt)}</span>`],
+          x: { [t('pu.receiptNo')]: x.r.receiptNumber ?? '', [t('pu.number')]: x.p.purchaseNumber ?? '', [t('c.supplier')]: supName(x.p), [t('c.items')]: x.its.length, [t('pu.receiveValue')]: +x.v.toFixed(3), [t('c.date')]: fmtDateTime(x.r.createdAt) } })) };
+    }
+    return null;
+  } });
   const unsub = LIVE.watch([...PU_PATHS, ...PU_CATALOG], draw);
   draw();
   takeDoc('purchases', [...PU_PATHS, ...PU_CATALOG], id => { const p = (LIVE.cache.purchases || {})[id]; if (p) details({ id, p, status: puStatus(p), total: expectedTotal(p), items: items$(p.items) }); });
-  return () => { unsub(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); freshDrawer(false); };
 };
 
 /* =====================================================================
@@ -632,6 +656,17 @@ PAGES.purchases = view => {
    ===================================================================== */
 const SP_PATHS = ['suppliers', 'products', 'stockMaterials', 'purchases', 'units'];
 const OPEN = ['pending', 'approved', 'partial'];
+/* Card page listing purchase requests (row → the request's details) */
+function kdPurchases({ title, sub, ic, file, list, onRow }) {
+  const tot = list.reduce((a, r) => a + r.total, 0);
+  return { title, sub, ic, file, onRow,
+    chips: [[t('kd.rows'), fmtNum(list.length)], [t('pm.value'), fmtMoney(tot)], [t('c.supplier'), fmtNum(new Set(list.map(r => r.p.supplierId || supName(r.p))).size)]],
+    cols: [{ h: t('pu.number') }, { h: t('c.supplier') }, { h: t('c.status') }, { h: t('c.items'), end: 1 }, { h: t('pm.value'), end: 1 }, { h: t('pm.storekeeper') }, { h: t('c.date') }],
+    rows: list.map(r => ({ id: r.id, text: [r.p.purchaseNumber, r.p.purchaseInvoiceNumber, supName(r.p), r.p.storekeeperName, ...r.items.map(i => i.name || '')].join(' '),
+      cells: [`<b class="mono">#${esc(r.p.purchaseNumber ?? '-')}</b>`, `<b>${esc(supName(r.p))}</b>`, `<span class="badge tone-${PU_TONE[r.status]}"><i></i>${t('pu.st.' + r.status)}</span>`, fmtNum(r.items.length), fmtMoney(r.total), esc(r.p.storekeeperName || '-'), `<span class="date">${fmtDateTime(r.p.createdAt)}</span>`],
+      x: { [t('pu.number')]: r.p.purchaseNumber ?? '', [t('c.supplier')]: supName(r.p), [t('c.status')]: t('pu.st.' + r.status), [t('c.items')]: r.items.length, [t('pm.value')]: +r.total.toFixed(3), [t('pm.storekeeper')]: r.p.storekeeperName || '', [t('c.date')]: fmtDateTime(r.p.createdAt) } })) };
+}
+const puRec = (id, p) => ({ id, p, status: puStatus(p), total: expectedTotal(p), items: items$(p.items) });
 
 PAGES.suppliers = view => {
   const st = (S.sp ||= { q: '', page: 1 });
@@ -666,9 +701,9 @@ PAGES.suppliers = view => {
     Object.values(LIVE.cache.suppliers || {}).forEach(s => supplierSideIds(s).forEach(id => linked.add(id)));
     setKpis($('#spK', view), [
       kpiCard({ label: t('sp.kCount'), value: all.length, ic: 'truck', tone: 'c1' }),
-      kpiCard({ label: t('sp.kItems'), value: linked.size, ic: 'box', tone: 'c2' }),
-      kpiCard({ label: t('sp.kOpen'), value: all.reduce((a, r) => a + r.open, 0), ic: 'clock', tone: 'c4' }),
-      kpiCard({ label: t('sp.kValue30'), value: all.reduce((a, r) => a + r.value30, 0), kind: 'money', ic: 'wallet', tone: 'c3' })
+      kpiCard({ label: t('sp.kItems'), value: linked.size, ic: 'box', tone: 'c2', drill: 'items' }),
+      kpiCard({ label: t('sp.kOpen'), value: all.reduce((a, r) => a + r.open, 0), ic: 'clock', tone: 'c4', drill: 'open' }),
+      kpiCard({ label: t('sp.kValue30'), value: all.reduce((a, r) => a + r.value30, 0), kind: 'money', ic: 'wallet', tone: 'c3', drill: 'value30' })
     ].join(''), first);
     const q = normQ(st.q);
     const list = all.filter(r => !q || normQ(`${r.s.nameAr || ''} ${r.s.nameEn || ''} ${r.s.name || ''} ${r.s.phone || ''}`).includes(q));
@@ -928,7 +963,32 @@ PAGES.suppliers = view => {
     else if (b.dataset.sp === 'neworder') { S.pu = { ...(S.pu || {}), supplier: 'all', page: 1 }; S.puOpenNew = id; location.hash = '#/purchases'; }
   });
 
+  // Card pages: items linked to suppliers, open requests, and 30-day purchases per supplier
+  const closeDrill = kpiDrills(view, { paths: SP_PATHS, ready: () => LIVE.loaded(SP_PATHS), build: kind => {
+    const pu = Object.entries(LIVE.cache.purchases || {}).filter(([, p]) => p && typeof p === 'object').map(([id, p]) => puRec(id, p));
+    const goPu = () => { location.hash = '#/purchases'; };
+    if (kind === 'open') return { ...kdPurchases({ sub: t('sp.sub'), ic: 'clock', file: 'suppliers-open-requests.xlsx', list: pu.filter(r => OPEN.includes(r.status)).sort((a, b) => (a.p.createdAt || 0) - (b.p.createdAt || 0)) }), onRow: null };
+    if (kind === 'value30') {
+      const month = Date.now() - 30 * 86400000;
+      return kdBreakdown({ title: '', sub: `${t('kd.bySupplier')} · ${t('kd.last30')}`, ic: 'wallet', file: 'suppliers-value-30d.xlsx', groupH: t('c.supplier'), countH: t('kd.rows'), valueH: t('sp.value30'),
+        items: kdGroup(pu.filter(r => (r.p.createdAt || 0) >= month && r.status !== 'rejected'), r => r.p.supplierId || supName(r.p), r => supName(r.p), r => r.total) });
+    }
+    if (kind === 'items') {
+      const sups = LIVE.cache.suppliers || {}, m = new Map();
+      [['product', LIVE.cache.products], ['material', LIVE.cache.stockMaterials]].forEach(([type, list]) => Object.entries(list || {}).forEach(([id, it]) => { if (it && supplierIdsOf(it).length) m.set(`${type}:${id}`, { type, it, sids: new Set(supplierIdsOf(it)) }); }));
+      Object.entries(sups).forEach(([sid, sp]) => supplierSideIds(sp).forEach(k => { const [type, ...rest] = String(k).split(':'); const id = rest.join(':'); const it = ((type === 'product' ? LIVE.cache.products : LIVE.cache.stockMaterials) || {})[id]; if (!it) return; const g = m.get(k) || { type, it, sids: new Set() }; g.sids.add(sid); m.set(k, g); }));
+      const list = [...m.values()].sort((a, b) => (nameOf(a.it) || '').localeCompare(nameOf(b.it) || ''));
+      const names = g => [...g.sids].map(id => nameOf(sups[id]) || '-');
+      return { sub: t('sp.sub'), ic: 'box', file: 'supplier-items.xlsx',
+        chips: [[t('kd.itemsN'), fmtNum(list.length)], [t('products'), fmtNum(list.filter(g => g.type === 'product').length)], [t('stock-materials'), fmtNum(list.filter(g => g.type === 'material').length)]],
+        cols: [{ h: t('kd.item') }, { h: t('kd.type') }, { h: t('c.supplier') }],
+        rows: list.map(g => ({ id: null, text: `${nameOf(g.it)} ${g.it.code || ''} ${names(g).join(' ')}`,
+          cells: [`<span class="cell-2"><b>${esc(nameOf(g.it) || '-')}</b>${g.it.code ? `<small class="muted mono">${esc(g.it.code)}</small>` : ''}</span>`, esc(t(g.type === 'product' ? 'products' : 'stock-materials')), names(g).map(n => `<span class="item-chip">${esc(n)}</span>`).join(' ')],
+          x: { [t('kd.item')]: nameOf(g.it) || '', [t('kd.type')]: t(g.type === 'product' ? 'products' : 'stock-materials'), [t('c.supplier')]: names(g).join('، ') } })) };
+    }
+    return null;
+  } });
   const unsub = LIVE.watch(SP_PATHS, draw);
   draw();
-  return () => { unsub(); itemsOpenFor = null; closePicker(); document.removeEventListener('keydown', pickerKeys, true); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); itemsOpenFor = null; closePicker(); document.removeEventListener('keydown', pickerKeys, true); freshDrawer(false); };
 };

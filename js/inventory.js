@@ -431,11 +431,63 @@ function voucherPage(view, cfg) {
     ({ view: details, print: x => printVoucher(x.r), edit: openForm, delete: remove })[b.dataset.v](rec);
   });
 
+  /* ---------- card pages ---------- */
+  const lineQty = v => fmtNum(v, 3);
+  function drillCfg(kind) {
+    const rows = all().filter(x => inLast30(x.r)), per = t('kd.last30');
+    const [base, arg] = kind.split(':');
+    const lineUnit = it => (it.unitId && unitName(it.unitId)) || it.unitName || it.unit || '';
+    const itemRow = it => `<span class="cell-2"><b>${esc(liveItemName(it))}</b><small class="muted">${esc(typeLabel(it.itemType))}${it.code ? ` · ${esc(it.code)}` : ''}</small></span>`;
+    if (base === 'v30') {
+      const [f, v] = (arg || '').split('=');
+      const list = f ? rows.filter(x => String(x.r[f] || (f === 'issueType' ? 'order' : '')) === v) : rows;
+      const cols = cfg.cols.map(c => ({ h: c.h, end: /\bend\b/.test(c.cls || '') }));
+      return { title: '', sub: `${t(cfg.route)} · ${per}`, ic: cfg.ic, file: `${cfg.route}-${base}.xlsx`,
+        onRow: id => { const r = (LIVE.cache[cfg.path] || {})[id]; if (r) details({ id, r }); },
+        chips: [[t('kd.vouchers'), fmtNum(list.length)], [t('kd.lines'), fmtNum(list.reduce((s2, x) => s2 + x.items.length, 0))], [t('iv.totalQty'), lineQty(list.reduce((s2, x) => s2 + ivQtySum(x.r), 0))]],
+        cols, rows: list.map(x => ({ id: x.id, text: [numOf(x.r), x.r.storekeeperName, cfg.searchText(x.r), ...x.items.map(i => liveItemName(i))].join(' '),
+          cells: cfg.cols.map(c => c.cell(x.r, x)),
+          x: Object.fromEntries(cfg.cols.map(c => [String(c.h).replace(/<[^>]+>/g, ''), String(c.cell(x.r, x)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()])) })) };
+    }
+    if (base === 'qty30') {
+      const m = new Map();
+      rows.forEach(x => x.items.forEach(it => { const key = `${it.itemType}:${it.itemId || liveItemName(it)}`; const g = m.get(key) || { it, qty: 0, n: 0, v: new Set() }; g.qty += it.qty; g.n++; g.v.add(x.id); m.set(key, g); }));
+      const list = [...m.values()].sort((a, b) => b.qty - a.qty);
+      return { title: `${t('iv.qty30')}`, sub: `${t(cfg.route)} · ${t('kd.byItem')}`, ic: 'box', file: `${cfg.route}-items-30d.xlsx`,
+        chips: [[t('kd.itemsN'), fmtNum(list.length)], [t('iv.totalQty'), lineQty(list.reduce((s2, g) => s2 + g.qty, 0))], [t('kd.vouchers'), fmtNum(rows.length)]],
+        cols: [{ h: '#' }, { h: t('kd.item') }, { h: t('kd.unit') }, { h: t('kd.vouchers'), end: 1 }, { h: t('iv.totalQty'), end: 1 }],
+        rows: list.map((g, i) => ({ id: null, text: `${liveItemName(g.it)} ${g.it.code || ''}`,
+          cells: [`<span class="muted">${i + 1}</span>`, itemRow(g.it), esc(lineUnit(g.it) || '—'), fmtNum(g.v.size), `<b>${lineQty(g.qty)}</b>`],
+          x: { [t('kd.item')]: liveItemName(g.it), [t('kd.type')]: typeLabel(g.it.itemType), [t('kd.unit')]: lineUnit(g.it), [t('kd.vouchers')]: g.v.size, [t('iv.totalQty')]: +g.qty.toFixed(3) } })) };
+    }
+    if (base === 'br30') {
+      const items = kdGroup(rows, x => x.r[arg] || '-', x => branchLabel(x.r[arg]) || '-', x => ivQtySum(x.r));
+      return kdBreakdown({ title: '', sub: `${t(cfg.route)} · ${per}`, ic: 'building', file: `${cfg.route}-branches-30d.xlsx`,
+        groupH: t('kd.branch'), countH: t('kd.vouchers'), valueH: t('iv.totalQty'), items, kind: 'num' });
+    }
+    if (base === 'lines30' || base === 'diff30') {
+      const lines = rows.flatMap(x => x.items.map(it => ({ x, it, prev: it.previousQty == null ? null : Number(it.previousQty) })))
+        .filter(l => base === 'lines30' || (l.prev !== null && Math.abs(l.prev - l.it.qty) > 1e-9));
+      const diff = l => (l.prev === null ? null : l.it.qty - l.prev);
+      const dCell = l => { const d = diff(l); return d === null ? '<span class="muted">—</span>' : `<b class="${d > 0 ? 'pos' : d < 0 ? 'neg' : ''}"><bdi dir="ltr">${d > 0 ? '+' : ''}${lineQty(d)}</bdi></b>`; };
+      return { title: t(base === 'lines30' ? 'iv.ic.kItems30' : 'iv.ic.kDiff30'), sub: `${t(cfg.route)} · ${per}`, ic: base === 'lines30' ? 'box' : 'alert', file: `${cfg.route}-${base}.xlsx`,
+        onRow: id => { const r = (LIVE.cache[cfg.path] || {})[id]; if (r) details({ id, r }); },
+        chips: [[t('kd.lines'), fmtNum(lines.length)], [t('kd.vouchers'), fmtNum(new Set(lines.map(l => l.x.id)).size)],
+          ...(base === 'diff30' ? [[t('kd.plus'), fmtNum(lines.filter(l => diff(l) > 0).length), 'success'], [t('kd.minus'), fmtNum(lines.filter(l => diff(l) < 0).length), 'danger']] : [])],
+        cols: [{ h: k('number') }, { h: t('c.branch') }, { h: t('kd.item') }, { h: t('kd.before'), end: 1 }, { h: t('kd.counted'), end: 1 }, { h: t('kd.diff'), end: 1 }, { h: t('c.date') }],
+        rows: lines.map(l => ({ id: l.x.id, text: `${numOf(l.x.r)} ${liveItemName(l.it)} ${branchLabel(l.x.r.branchId)}`,
+          cells: [`<b class="mono">#${esc(numOf(l.x.r))}</b>`, esc(branchLabel(l.x.r.branchId) || '-'), itemRow(l.it), l.prev === null ? '—' : lineQty(l.prev), lineQty(l.it.qty), dCell(l), `<span class="date">${fmtDateTime(l.x.r.createdAt)}</span>`],
+          x: { [k('number')]: numOf(l.x.r), [t('c.branch')]: branchLabel(l.x.r.branchId) || '', [t('kd.item')]: liveItemName(l.it), [t('kd.before')]: l.prev, [t('kd.counted')]: l.it.qty, [t('kd.diff')]: diff(l), [t('c.date')]: fmtDateTime(l.x.r.createdAt) } })) };
+    }
+    return null;
+  }
+  const closeDrill = kpiDrills(view, { paths: [...PATHS, ...IV_CAT], ready: () => LIVE.loaded(PATHS), build: drillCfg });
+
   const unsub = LIVE.watch([...PATHS, ...IV_CAT], draw);
   draw();
   takeDoc(cfg.route, [...PATHS, ...IV_CAT], id => { const r = (LIVE.cache[cfg.path] || {})[id]; if (r) details({ id, r }); });
   if (IV_PREFILL && IV_PREFILL.route === cfg.route) { const pre = IV_PREFILL; IV_PREFILL = null; LIVE.whenLoaded([...PATHS, ...IV_CAT]).then(() => openForm(null, pre)); }
-  return () => { unsub(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); freshDrawer(false); };
 }
 let IV_PREFILL = null;
 /* Open another voucher page with a new voucher for some lines, e.g. a batch to transfer or scrap */
@@ -453,8 +505,10 @@ function diffMoves(before, after) {
 const movesAt = (r, branch, sign) => (!branch ? {} : sumByPath(ivItems(r).filter(it => itemData(it.itemType, it.itemId))
   .flatMap(it => [[stockKey(it.itemType, it.itemId, branch), sign * it.qty], ...lineBatchMoves(it, branch, sign), ...lineLocMoves(it, branch, sign)])));
 const mergeMoves = (...maps) => { const m = {}; maps.forEach(x => Object.entries(x).forEach(([p, q]) => { m[p] = (m[p] || 0) + q; })); return m; };
-const kpi30 = (rows, label, ic, tone) => kpiCard({ label, value: rows.filter(x => inLast30(x.r)).length, ic, tone });
-const kpiQty30 = (rows, label, tone = 'c2') => kpiCard({ label, value: rows.filter(x => inLast30(x.r)).reduce((s, x) => s + ivQtySum(x.r), 0), ic: 'box', tone });
+/* Card drill keys understood by voucherPage: v30[:field=value] · qty30 · br30:field · lines30 · diff30 */
+const kpi30 = (rows, label, ic, tone, drill = 'v30') => kpiCard({ label, value: rows.filter(x => inLast30(x.r)).length, ic, tone, drill });
+const kpiQty30 = (rows, label, tone = 'c2') => kpiCard({ label, value: rows.filter(x => inLast30(x.r)).reduce((s, x) => s + ivQtySum(x.r), 0), ic: 'box', tone, drill: 'qty30' });
+const kpiBranches30 = (rows, label, field, tone) => kpiCard({ label, value: new Set(rows.filter(x => inLast30(x.r)).map(x => x.r[field]).filter(Boolean)).size, ic: 'building', tone, drill: `br30:${field}` });
 const kpiAll = (rows, label) => kpiCard({ label, value: rows.length, ic: 'clipcheck', tone: 'c3' });
 
 /* =====================================================================
@@ -512,8 +566,8 @@ PAGES.issue = view => voucherPage(view, {
   ],
   kpis: rows => {
     const r30 = rows.filter(x => inLast30(x.r));
-    return [kpiCard({ label: t('iv.is.k30'), value: r30.length, ic: 'out', tone: 'c1' }),
-      ...ISSUE_TYPES.map((ty, i) => kpiCard({ label: `${issueTypeLabel(ty)} (${t('iv.days30')})`, value: r30.filter(x => (x.r.issueType || 'order') === ty).length, ic: ['receipt', 'factory', 'box'][i], tone: ['c2', 'c4', 'c3'][i] }))];
+    return [kpiCard({ label: t('iv.is.k30'), value: r30.length, ic: 'out', tone: 'c1', drill: 'v30' }),
+      ...ISSUE_TYPES.map((ty, i) => kpiCard({ label: `${issueTypeLabel(ty)} (${t('iv.days30')})`, value: r30.filter(x => (x.r.issueType || 'order') === ty).length, ic: ['receipt', 'factory', 'box'][i], tone: ['c2', 'c4', 'c3'][i], drill: `v30:issueType=${ty}` }))];
   },
   init: (r, main) => ({ type: r ? r.issueType || 'order' : 'order', cashierId: r ? r.cashierId || '' : '', invoiceNumber: r ? r.invoiceNumber || '' : '', branchId: (r && r.branchId) || main }),
   stockBranch: d => d.branchId,
@@ -584,7 +638,7 @@ PAGES.transfers = view => voucherPage(view, {
     { h: t('c.date'), cell: r => `<span class="date">${fmtDateTime(r.createdAt)}</span>` },
     { h: t('c.items'), cell: (r, x) => `<b>${x.items.length}</b>`, cls: 'end' }
   ],
-  kpis: rows => [kpi30(rows, t('iv.tr.k30'), 'swap', 'c1'), kpiQty30(rows, t('iv.qty30')), kpiCard({ label: t('iv.tr.kBranches'), value: new Set(rows.filter(x => inLast30(x.r)).map(x => x.r.toBranchId).filter(Boolean)).size, ic: 'building', tone: 'c4' }), kpiAll(rows, t('iv.kTotal'))],
+  kpis: rows => [kpi30(rows, t('iv.tr.k30'), 'swap', 'c1'), kpiQty30(rows, t('iv.qty30')), kpiBranches30(rows, t('iv.tr.kBranches'), 'toBranchId', 'c4'), kpiAll(rows, t('iv.kTotal'))],
   init: (r, main) => ({ from: r ? r.fromBranchId || main || '' : main || '', to: r ? r.toBranchId || '' : '', receiver: r ? r.receiverName || '' : '' }),
   stockBranch: d => d.from,
   locMode: d => (d.from === mainBranch() ? 'out' : d.to === mainBranch() ? 'in' : null),
@@ -625,7 +679,7 @@ PAGES['return-warehouse'] = view => voucherPage(view, {
     { h: t('c.date'), cell: r => `<span class="cell-2"><span class="date">${fmtDateTime(r.createdAt)}</span>${r.reason ? `<small class="clip" title="${esc(r.reason)}">${esc(r.reason)}</small>` : ''}</span>` },
     { h: t('c.items'), cell: (r, x) => `<b>${x.items.length}</b>`, cls: 'end' }
   ],
-  kpis: rows => [kpi30(rows, t('iv.rw.k30'), 'undo', 'c1'), kpiQty30(rows, t('iv.qty30')), kpiCard({ label: t('iv.rw.kBranches'), value: new Set(rows.filter(x => inLast30(x.r)).map(x => x.r.fromBranchId).filter(Boolean)).size, ic: 'building', tone: 'c4' }), kpiAll(rows, t('iv.kTotal'))],
+  kpis: rows => [kpi30(rows, t('iv.rw.k30'), 'undo', 'c1'), kpiQty30(rows, t('iv.qty30')), kpiBranches30(rows, t('iv.rw.kBranches'), 'fromBranchId', 'c4'), kpiAll(rows, t('iv.kTotal'))],
   init: r => ({ from: r ? r.fromBranchId || '' : '', reason: r ? r.reason || '' : '' }),
   stockBranch: d => d.from,
   locMode: () => 'in',
@@ -658,7 +712,7 @@ PAGES['damaged-returns'] = view => voucherPage(view, {
     { h: t('c.date'), cell: r => `<span class="date">${fmtDateTime(r.createdAt)}</span>` },
     { h: t('c.items'), cell: (r, x) => `<b>${x.items.length}</b>`, cls: 'end' }
   ],
-  kpis: rows => [kpi30(rows, t('iv.dm.k30'), 'trash', 'c4'), kpiQty30(rows, t('iv.qty30')), kpiCard({ label: t('iv.rw.kBranches'), value: new Set(rows.filter(x => inLast30(x.r)).map(x => x.r.branchId).filter(Boolean)).size, ic: 'building', tone: 'c1' }), kpiAll(rows, t('iv.kTotal'))],
+  kpis: rows => [kpi30(rows, t('iv.dm.k30'), 'trash', 'c4'), kpiQty30(rows, t('iv.qty30')), kpiBranches30(rows, t('iv.rw.kBranches'), 'branchId', 'c1'), kpiAll(rows, t('iv.kTotal'))],
   init: r => ({ branchId: r ? r.branchId || '' : '', sender: r ? r.senderName || '' : '' }),
   stockBranch: d => d.branchId,
   locMode: d => (d.branchId === mainBranch() ? 'out' : null),
@@ -745,8 +799,8 @@ PAGES.stocktake = view => voucherPage(view, {
     { h: t('pm.storekeeper'), cell: r => esc(r.storekeeperName || '-') },
     { h: t('c.items'), cell: (r, x) => `<b>${x.items.length}</b>`, cls: 'end' }
   ],
-  kpis: rows => [kpi30(rows, t('iv.ic.k30'), 'clipcheck', 'c1'), kpiCard({ label: t('iv.ic.kItems30'), value: rows.filter(x => inLast30(x.r)).reduce((s, x) => s + x.items.length, 0), ic: 'box', tone: 'c2' }),
-    kpiCard({ label: t('iv.ic.kDiff30'), value: rows.filter(x => inLast30(x.r)).reduce((s, x) => s + x.items.filter(i => i.previousQty != null && Math.abs(Number(i.previousQty) - i.qty) > 1e-9).length, 0), ic: 'alert', tone: 'c4' }), kpiAll(rows, t('iv.kTotal'))],
+  kpis: rows => [kpi30(rows, t('iv.ic.k30'), 'clipcheck', 'c1'), kpiCard({ label: t('iv.ic.kItems30'), value: rows.filter(x => inLast30(x.r)).reduce((s, x) => s + x.items.length, 0), ic: 'box', tone: 'c2', drill: 'lines30' }),
+    kpiCard({ label: t('iv.ic.kDiff30'), value: rows.filter(x => inLast30(x.r)).reduce((s, x) => s + x.items.filter(i => i.previousQty != null && Math.abs(Number(i.previousQty) - i.qty) > 1e-9).length, 0), ic: 'alert', tone: 'c4', drill: 'diff30' }), kpiAll(rows, t('iv.kTotal'))],
   init: r => ({ branchId: r ? r.branchId || '' : '', storageId: r ? r.storageLocationId || '' : '' }),
   stockBranch: d => d.branchId,
   pickFilter: (e, d) => !(isMainBranch(d.branchId) && d.storageId) || inLocation(e.type, e.id, d.storageId),

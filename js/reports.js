@@ -62,7 +62,38 @@ function rpWeeks(y, m) {
 
 /* ---------- orders ---------- */
 const rpNum = v => Number(v || 0) || 0;
-const rpActive = () => Object.entries(LIVE.cache.orders || {}).filter(([, o]) => o && typeof o === 'object' && !oCancelled(o)).map(([id, o]) => ({ id, o, ts: oTime(o) }));
+/* Online-platform invoices (فواتير الأونلاين) count with the cashier's. They come
+   from the platform server (OO in sales.js); none of them is saved again as a
+   cashier invoice, so nothing is counted twice. Their branch follows the
+   catalog, not the platform's branchId (that is only where the customer picks
+   up): bakery invoices belong to the main branch (Hawalli) and restaurant
+   invoices to Abu Al-Hasaniya — Yarmouk sells nothing online. Their items to the accounting products by name, and they show as one
+   "cashier" so the per-cashier report keeps them apart. */
+const RP_PLATFORM_BRANCH = { hawalli: /حولي|hawalli/i, abu: /حصاني|hasaniya/i };
+const rpNameKey = v => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase();
+let rpOnlineMemo = { rows: null, products: null, branches: null, lang: '', list: [] };
+function rpOnlineAll() {
+  const products = LIVE.cache.products || {}, branches = LIVE.cache.branches || {}, m = rpOnlineMemo;
+  if (m.rows === OO.rows && m.products === products && m.branches === branches && m.lang === S.lang) return m.list;
+  const byName = new Map();
+  Object.entries(products).forEach(([id, p]) => { if (!p) return; [p.nameAr, p.name, p.nameEn].forEach(n => { const k = rpNameKey(n); if (k && !byName.has(k)) byName.set(k, id); }); });
+  const find = re => (Object.entries(branches).find(([, b]) => b && re.test(`${nameOf(b)} ${b.name || ''} ${b.nameAr || ''} ${b.nameEn || ''}`)) || [])[0];
+  const mainId = (Object.entries(branches).find(([, b]) => b && b.isMain) || [])[0];
+  const bakery = mainId || find(RP_PLATFORM_BRANCH.hawalli) || 'hawalli', restaurant = find(RP_PLATFORM_BRANCH.abu) || 'abu';
+  const list = Object.values(OO.rows || {}).filter(o => o && typeof o === 'object' && o.orderId).map(o => {
+    const items = (Array.isArray(o.items) ? o.items : Object.values(o.items || {})).filter(Boolean).map(it => {
+      const pid = (products[it.productId] && it.productId) || byName.get(rpNameKey(it.name)) || byName.get(rpNameKey(it.nameEn));
+      return { ...it, productId: pid || `online:${it.id || rpNameKey(it.name)}`, productName: it.name, productNameEn: it.nameEn, price: it.unitPrice ?? it.price };
+    });
+    const x = { ...o, items, branchId: ooCatalog(o) === 'restaurant' ? restaurant : bakery, pickupBranchId: o.branchId || '', cashierId: 'online', cashierName: t('online-orders'), online: true };
+    return { id: `online:${o.orderId}`, o: x, ts: oTime(x) };
+  });
+  rpOnlineMemo = { rows: OO.rows, products, branches, lang: S.lang, list };
+  return list;
+}
+/* Every invoice, cancelled ones too: the cashier's and the online platform's */
+const rpAll = () => [...Object.entries(LIVE.cache.orders || {}).filter(([, o]) => o && typeof o === 'object').map(([id, o]) => ({ id, o, ts: oTime(o) })), ...rpOnlineAll()];
+const rpActive = () => rpAll().filter(x => !oCancelled(x.o));
 const rpBetween = (start, end, branch = 'all') => rpActive().filter(x => x.ts && x.ts >= start && x.ts <= end && (branch === 'all' || x.o.branchId === branch));
 const rpOrders = (from, to, branch = 'all') => rpActive().filter(x => inRange(x.ts, from, to) && (branch === 'all' || String(x.o.branchId || '') === String(branch))).sort((a, b) => b.ts - a.ts);
 const rpCost = o => oItems(o).reduce((s, it) => s + it.qty * rpNum(((LIVE.cache.products || {})[it.productId] || {}).cost), 0);
@@ -112,7 +143,12 @@ PAGES.reports = view => {
     os: { from: '', to: '', branch: 'all', q: '' }
   });
   let first = true, picker = null;
-  const unsubs = [LIVE.watch(RP_PATHS, () => draw())];
+  // The online invoices are read from the platform every minute, as on their own page
+  const onlineSub = () => draw();
+  OO.subs.add(onlineSub);
+  if (!OO.loaded) refreshOnline();
+  const onlineTimer = setInterval(refreshOnline, 60000);
+  const unsubs = [LIVE.watch(RP_PATHS, () => draw()), () => { OO.subs.delete(onlineSub); clearInterval(onlineTimer); }];
   let retWatched = false;
 
   const money = n => fmtMoney(n);
@@ -161,7 +197,7 @@ PAGES.reports = view => {
     setKpis($('#rpK', view), list.map(([label, value, kind, ic, tone]) => kpiCard({ label, value, kind, ic, tone })).join(''), first);
   }
   function loading(cols) {
-    if (LIVE.loaded(RP_PATHS) && (st.view !== 'returns' || LIVE.loaded(RP_RET_PATHS))) return false;
+    if (LIVE.loaded(RP_PATHS) && OO.loaded && (st.view !== 'returns' || LIVE.loaded(RP_RET_PATHS))) return false;
     setHtml($('#rpBody', view), skeletonRows(6, cols));
     const k = $('#rpK', view); if (k) k.innerHTML = skeletonKpis();
     return true;
@@ -278,7 +314,7 @@ PAGES.reports = view => {
       </section>`;
   }
   function drawDash() {
-    if (!LIVE.loaded(RP_PATHS)) { $('#rpMetrics', view).innerHTML = `<article class="card rp-metric"><i class="skel lg"></i><i class="skel"></i></article>`.repeat(2); return; }
+    if (!LIVE.loaded(RP_PATHS) || !OO.loaded) { $('#rpMetrics', view).innerHTML = `<article class="card rp-metric"><i class="skel lg"></i><i class="skel"></i></article>`.repeat(2); return; }
     setHtml($('#rpBranch', view), branchOpts(st.branch));
     const range = rpRange(st.period, st.date);
     if (!st.cmpVals[st.period]) st.cmpVals[st.period] = rpDefaultCompare(st.period, st.date);
@@ -287,7 +323,7 @@ PAGES.reports = view => {
     setHtml($('#rpCompare', view), st.cmp ? periodCtl('c', st.cmpVals[st.period], cmpRange) : '');
     $('#rpCompare', view).hidden = !st.cmp;
     const { cur, cmp } = metrics(range, cmpRange);
-    const cards = [metricCard('orders', t('orders'), true, range, cmpRange, cur.orders, cmp.orders, cur.tot.orders, cmp.tot.orders),
+    const cards = [metricCard('orders', t('o.kCount'), true, range, cmpRange, cur.orders, cmp.orders, cur.tot.orders, cmp.tot.orders),
       metricCard('revenue', t('rp.revenue'), false, range, cmpRange, cur.revenue, cmp.revenue, cur.tot.revenue, cmp.tot.revenue)];
     const box = $('#rpMetrics', view), html = cards.map(c => c.html).join('');
     if (box._html !== html) {
@@ -311,7 +347,7 @@ PAGES.reports = view => {
     const c = sum(cur), p = prev && sum(prev);
     const delta = (a, b) => (p && b ? ((a - b) / b) * 100 : undefined);
     const avg = x => (x.n ? x.total / x.n : 0);
-    const cancelled = Object.values(LIVE.cache.orders || {}).filter(o => {
+    const cancelled = rpAll().map(x => x.o).filter(o => {
       if (!o || !oCancelled(o) || (st.branch !== 'all' && o.branchId !== st.branch)) return false;
       const ts = oTime(o); return ts >= range.start && ts <= range.end;
     });
@@ -414,12 +450,12 @@ PAGES.reports = view => {
 
   /* ---- orders / sales of the dashboard period ---- */
   V.metricDetails = {
-    title: () => (st.md.pick && st.md.pick.label) || (st.md.metric === 'revenue' ? t('rp.revenue') : t('orders')),
+    title: () => (st.md.pick && st.md.pick.label) || (st.md.metric === 'revenue' ? t('rp.revenue') : t('o.kCount')),
     shell: () => shell(V.metricDetails.title(), '', searchF('q', t('rp.searchInvoice'), st.md.q) + selF('branch', t('o.branch')) + selF('cashier', t('o.cashier')) + selF('customer', t('o.customer')), { k: 5 }),
     data() {
       const range = rpRange(st.period, st.date), f = st.md, q = normQ(f.q), pick = f.pick || { kind: 'all' };
       const inPeriod = pick.kind === 'cancelled'
-        ? Object.entries(LIVE.cache.orders || {}).filter(([, o]) => o && typeof o === 'object' && oCancelled(o)).map(([id, o]) => ({ id, o, ts: oTime(o) })).filter(x => x.ts >= range.start && x.ts <= range.end)
+        ? rpAll().filter(x => oCancelled(x.o)).filter(x => x.ts >= range.start && x.ts <= range.end)
         : rpBetween(range.start, range.end, 'all');
       const match = ({ o, ts }) => {
         if (pick.kind === 'fee') return oFee(o) > 0;
@@ -434,7 +470,7 @@ PAGES.reports = view => {
         .filter(r => !q || normQ(`${r.num} ${r.cust} ${r.phone}`).includes(q) || oProductText(r.o).includes(q)).sort((a, b) => b.ts - a.ts);
       const tot = rows.reduce((a, r) => ({ n: a.n + 1, products: a.products + r.products, fee: a.fee + r.fee, total: a.total + r.total, net: a.net + r.net }), { n: 0, products: 0, fee: 0, total: 0, net: 0 });
       const opts = (key, label) => [...new Set(inPeriod.map(({ o }) => o[key]).filter(Boolean))].map(id => [id, label(id)]).sort((a, b) => a[1].localeCompare(b[1]));
-      return { range, rows, tot, branches: opts('branchId', id => nameOf((LIVE.cache.branches || {})[id]) || id), cashiers: opts('cashierId', id => ((LIVE.cache.cashiers || {})[id] || {}).name || id), customers: [...inPeriod.reduce((m, { o }) => { const k = rpCustKey(o); if (k && !m.has(k)) m.set(k, rpCustLabel(o)); return m; }, new Map())].sort((a, b) => a[1].localeCompare(b[1])) };
+      return { range, rows, tot, branches: opts('branchId', id => nameOf((LIVE.cache.branches || {})[id]) || id), cashiers: opts('cashierId', id => (id === 'online' ? t('online-orders') : ((LIVE.cache.cashiers || {})[id] || {}).name || id)), customers: [...inPeriod.reduce((m, { o }) => { const k = rpCustKey(o); if (k && !m.has(k)) m.set(k, rpCustLabel(o)); return m; }, new Map())].sort((a, b) => a[1].localeCompare(b[1])) };
     },
     cols: () => ['#', t('o.number'), t('c.date'), t('o.customer'), t('c.phone'), t('o.branch'), t('o.cashier'), t('rp.productsAmount'), t('o.fee'), t('o.grand')],
     draw() {

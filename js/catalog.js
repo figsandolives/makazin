@@ -275,7 +275,7 @@ function itemsPage(view, kind) {
     Object.values(items).forEach(it => { if (!it || typeof it !== 'object') return; const tone = reorderTone(itemStock(it, st.branch), Number(it.reorderPoint || 0)); if (tone === 'critical') crit++; else if (tone === 'warning') warn++; });
     setKpis($('#itK', view), [
       kpiCard({ label: K('kTotal'), value: Object.keys(items).length, ic: C.ic, tone: 'c1' }),
-      kpiCard({ label: t('it.kCats'), value: Object.keys(LIVE.cache[C.cats] || {}).length, ic: 'folder', tone: 'c2' }),
+      kpiCard({ label: t('it.kCats'), value: Object.keys(LIVE.cache[C.cats] || {}).length, ic: 'folder', tone: 'c2', drill: 'cats' }),
       alertKpi('warning', t('it.kWarning'), warn, 'clock', STOCK_ALARM.unseen(C.route, 'warning')),
       alertKpi('critical', t('it.kCritical'), crit, 'alert', STOCK_ALARM.unseen(C.route, 'critical'))
     ].join(''), first);
@@ -618,10 +618,32 @@ function itemsPage(view, kind) {
     ({ edit: openForm, delete: remove, bc: downloadOneBarcode })[a](id);
   });
 
+  // Card page: every category with how many items it holds and how many need reordering
+  const closeDrill = kpiDrills(view, { paths: PATHS, ready: () => LIVE.loaded(PATHS), build: kind => {
+    if (kind !== 'cats') return null;
+    const items = Object.values(LIVE.cache[C.path] || {}).filter(it => it && typeof it === 'object');
+    const cats = Object.entries(LIVE.cache[C.cats] || {}).filter(([, c]) => c && typeof c === 'object');
+    const row = (id, name, parent) => {
+      const its = items.filter(it => (id ? it.categoryId === id : !it.categoryId || !(LIVE.cache[C.cats] || {})[it.categoryId]));
+      let warn = 0, crit = 0;
+      its.forEach(it => { const tone = reorderTone(itemStock(it, st.branch), Number(it.reorderPoint || 0)); if (tone === 'critical') crit++; else if (tone === 'warning') warn++; });
+      return { id: id || null, name, parent, n: its.length, warn, crit };
+    };
+    const list = cats.map(([id, c]) => row(id, nameOf(c) || '-', c.parentId ? nameOf((LIVE.cache[C.cats] || {})[c.parentId]) : '')).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+    const none = row(null, t('kd.noCat'), ''); if (none.n) list.push(none);
+    const badge = (v, tone) => (v ? `<span class="badge tone-${tone}">${fmtNum(v)}</span>` : '<span class="muted">0</span>');
+    return { title: t('it.kCats'), sub: t('kd.catsSub'), ic: 'folder', file: `${C.route}-categories.xlsx`,
+      onRow: id => { st.cat = id; st.page = 1; closeDrill(); draw(); },
+      chips: [[t('it.kCats'), fmtNum(cats.length)], [K('kTotal'), fmtNum(items.length)], [t('it.kWarning'), fmtNum(list.reduce((s, x) => s + x.warn, 0))], [t('it.kCritical'), fmtNum(list.reduce((s, x) => s + x.crit, 0)), 'danger']],
+      cols: [{ h: t('it.category') }, { h: t('kd.parentCat') }, { h: K('kTotal'), end: 1 }, { h: t('it.kWarning'), end: 1 }, { h: t('it.kCritical'), end: 1 }],
+      rows: list.map(x => ({ id: x.id, text: `${x.name} ${x.parent}`,
+        cells: [`<b>${esc(x.name)}</b>`, x.parent ? esc(x.parent) : '<span class="muted">—</span>', fmtNum(x.n), badge(x.warn, 'warning'), badge(x.crit, 'danger')],
+        x: { [t('it.category')]: x.name, [t('kd.parentCat')]: x.parent, [K('kTotal')]: x.n, [t('it.kWarning')]: x.warn, [t('it.kCritical')]: x.crit } })) };
+  } });
   const unsub = LIVE.watch([...PATHS, C.other], draw);
   ensureOrders();
   draw();
-  return () => { unsub(); ordersUnsub && ordersUnsub(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); ordersUnsub && ordersUnsub(); freshDrawer(false); };
 }
 
 PAGES.products = view => itemsPage(view, 'product');

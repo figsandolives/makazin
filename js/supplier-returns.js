@@ -76,9 +76,9 @@ PAGES['supplier-returns'] = view => {
     const month = Date.now() - 30 * 86400000;
     const recent = rows.filter(x => (x.r.createdAt || 0) >= month);
     setKpis($('#srK', view), [
-      kpiCard({ label: t('sr.kCount30'), value: recent.length, ic: 'ret', tone: 'c4' }),
-      kpiCard({ label: t('sr.kValue30'), value: recent.reduce((s, x) => s + x.total, 0), kind: 'money', ic: 'wallet', tone: 'c1' }),
-      kpiCard({ label: t('sr.kSuppliers30'), value: new Set(recent.map(x => x.r.supplierId).filter(Boolean)).size, ic: 'truck', tone: 'c2' }),
+      kpiCard({ label: t('sr.kCount30'), value: recent.length, ic: 'ret', tone: 'c4', drill: 'v30' }),
+      kpiCard({ label: t('sr.kValue30'), value: recent.reduce((s, x) => s + x.total, 0), kind: 'money', ic: 'wallet', tone: 'c1', drill: 'reason30' }),
+      kpiCard({ label: t('sr.kSuppliers30'), value: new Set(recent.map(x => x.r.supplierId).filter(Boolean)).size, ic: 'truck', tone: 'c2', drill: 'sup30' }),
       kpiCard({ label: t('sr.kTotal'), value: rows.length, ic: 'clipcheck', tone: 'c3' })
     ].join(''), first);
     const sups = Object.entries(LIVE.cache.suppliers || {}).sort((a, b) => nameOf(a[1]).localeCompare(nameOf(b[1])));
@@ -408,8 +408,25 @@ PAGES['supplier-returns'] = view => {
     ({ view: details, print: x => printReturn(x.r), edit: openForm, delete: remove })[b.dataset.sr](rec);
   });
 
+  // Card pages: returns of the last 30 days, their value by reason, and by supplier
+  const closeDrill = kpiDrills(view, { paths: [...SR_PATHS, ...SR_CATALOG], ready: () => LIVE.loaded(SR_PATHS), build: kind => {
+    const month = Date.now() - 30 * 86400000, recent = all().filter(x => (x.r.createdAt || 0) >= month), per = t('kd.last30');
+    const reasonOf = r => (r.reason ? t('sr.r.' + r.reason) : t('kd.noReason'));
+    if (kind === 'v30') return { sub: `${t('supplier-returns')} · ${per}`, ic: 'ret', file: 'supplier-returns-30d.xlsx', onRow: id => { const x = all().find(y => y.id === id); if (x) details(x); },
+      chips: [[t('kd.rows'), fmtNum(recent.length)], [t('pm.value'), fmtMoney(recent.reduce((a, x) => a + x.total, 0))], [t('c.supplier'), fmtNum(new Set(recent.map(x => x.r.supplierId).filter(Boolean)).size)]],
+      cols: [{ h: t('sr.number') }, { h: t('c.supplier') }, { h: t('c.items') }, { h: t('pm.value'), end: 1 }, { h: t('sr.reason') }, { h: t('c.date') }],
+      rows: recent.map(x => ({ id: x.id, text: [x.r.returnNumber, srSupName(x.r), x.r.note, reasonOf(x.r), ...x.items.map(i => i.name || '')].join(' '),
+        cells: [`<b class="mono">#${esc(x.r.returnNumber ?? '-')}</b>`, `<b>${esc(srSupName(x.r))}</b>`, `<span class="cell-2 items-cell"><b>${x.items.length} ${t('pu.itemsWord')}</b><small>${esc(x.items.slice(0, 2).map(it => it.name).join('، '))}${x.items.length > 2 ? '…' : ''}</small></span>`,
+          srHasPrices(x.r) ? fmtMoney(x.total) : '<span class="muted">—</span>', reasonCell(x.r), `<span class="date">${fmtDateTime(x.r.createdAt)}</span>`],
+        x: { [t('sr.number')]: x.r.returnNumber ?? '', [t('c.supplier')]: srSupName(x.r), [t('c.items')]: x.items.map(i => i.name).join('، '), [t('pm.value')]: +x.total.toFixed(3), [t('sr.reason')]: reasonOf(x.r), [t('c.date')]: fmtDateTime(x.r.createdAt) } })) };
+    if (kind === 'reason30') return kdBreakdown({ title: '', sub: `${t('kd.byReason')} · ${per}`, ic: 'wallet', file: 'supplier-returns-value-by-reason.xlsx', groupH: t('sr.reason'), countH: t('kd.rows'), valueH: t('pm.value'),
+      items: kdGroup(recent, x => x.r.reason || '-', x => reasonOf(x.r), x => x.total) });
+    if (kind === 'sup30') return kdBreakdown({ title: '', sub: `${t('kd.bySupplier')} · ${per}`, ic: 'truck', file: 'supplier-returns-by-supplier.xlsx', groupH: t('c.supplier'), countH: t('kd.rows'), valueH: t('pm.value'),
+      items: kdGroup(recent, x => x.r.supplierId || srSupName(x.r), x => srSupName(x.r), x => x.total) });
+    return null;
+  } });
   const unsub = LIVE.watch([...SR_PATHS, ...SR_CATALOG], draw);
   draw();
   takeDoc('supplier-returns', [...SR_PATHS, ...SR_CATALOG], id => { const r = (LIVE.cache.supplierReturns || {})[id]; if (r) details({ id, r }); });
-  return () => { unsub(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); freshDrawer(false); };
 };

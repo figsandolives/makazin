@@ -229,9 +229,9 @@ PAGES['pending-movements'] = view => {
     const decided = s => all.filter(r => r.status === s && Number(r.m.decidedAt || r.createdAt) >= month).length;
     setKpis($('#pmK', view), [
       kpiCard({ label: t('pm.kPending'), value: pend.length, ic: 'clock', tone: 'c4' }),
-      kpiCard({ label: t('pm.kValue'), value: pend.reduce((s, r) => s + (r.total || 0), 0), kind: 'money', ic: 'wallet', tone: 'c1' }),
-      kpiCard({ label: t('pm.kApproved'), value: decided('approved'), ic: 'check', tone: 'c2' }),
-      kpiCard({ label: t('pm.kRejected'), value: decided('rejected'), ic: 'x', tone: 'c3' })
+      kpiCard({ label: t('pm.kValue'), value: pend.reduce((s, r) => s + (r.total || 0), 0), kind: 'money', ic: 'wallet', tone: 'c1', drill: 'value' }),
+      kpiCard({ label: t('pm.kApproved'), value: decided('approved'), ic: 'check', tone: 'c2', drill: 'approved' }),
+      kpiCard({ label: t('pm.kRejected'), value: decided('rejected'), ic: 'x', tone: 'c3', drill: 'rejected' })
     ].join(''), first);
 
     const counts = s => (s === 'all' ? all.length : all.filter(r => r.status === s).length);
@@ -367,7 +367,25 @@ PAGES['pending-movements'] = view => {
     ({ view: details, print, approve: x => decide(x, 'approved'), reject: x => decide(x, 'rejected'), delete: remove })[b.dataset.pm](r);
   });
 
+  // Card pages: pending value by request, and what was approved / rejected in the last 30 days
+  const closeDrill = kpiDrills(view, { paths: PM_PATHS, ready: () => LIVE.loaded(PM_PATHS), build: kind => {
+    const all = pmRows(), month = Date.now() - 30 * 86400000;
+    const list = kind === 'value' ? all.filter(r => r.status === 'pending').sort((a, b) => (b.total || 0) - (a.total || 0))
+      : all.filter(r => r.status === kind && Number(r.m.decidedAt || r.createdAt) >= month).sort((a, b) => Number(b.m.decidedAt || b.createdAt) - Number(a.m.decidedAt || a.createdAt));
+    const sum = list.reduce((s, r) => s + (r.total || 0), 0), decidedCol = kind !== 'value';
+    const lbl = { value: 'pm.kValue', approved: 'pm.kApproved', rejected: 'pm.kRejected' }[kind];
+    if (!lbl) return null;
+    return { title: t(lbl), sub: t('pm.sub'), ic: { value: 'wallet', approved: 'check', rejected: 'x' }[kind], file: `pending-moves-${kind}.xlsx`,
+      onRow: id => { const r = pmRows().find(x => x.id === id); if (r && r.p) details(r); },
+      chips: [[t('kd.rows'), fmtNum(list.length)], [t('pm.value'), fmtMoney(sum)], [t('kd.branch'), fmtNum(new Set(list.map(r => r.branchId)).size)]],
+      cols: [{ h: t('pm.request') }, { h: t('c.supplier') }, { h: t('c.branch') }, { h: t('pm.storekeeper') }, { h: t('c.items'), end: 1 }, { h: t('pm.value'), end: 1 }, { h: t('c.date') }, ...(decidedCol ? [{ h: t('pm.decidedBy') }] : [])],
+      rows: list.map(r => ({ id: r.id, text: `${r.title} ${r.supplier} ${branchLabel(r.branchId)} ${r.storekeeper}`,
+        cells: [`<b>${esc(r.title)}</b>`, esc(r.supplier), esc(branchLabel(r.branchId) || '-'), esc(r.storekeeper), fmtNum(r.items.length), r.total == null ? '—' : fmtMoney(r.total), `<span class="date">${fmtDateTime(r.createdAt)}</span>`,
+          ...(decidedCol ? [`<span class="cell-2"><b>${esc(r.m.decidedByName || '-')}</b>${r.m.decidedAt ? `<small class="muted">${fmtDateTime(r.m.decidedAt)}</small>` : ''}</span>`] : [])],
+        x: { [t('pm.request')]: r.title, [t('c.supplier')]: r.supplier, [t('c.branch')]: branchLabel(r.branchId) || '', [t('pm.storekeeper')]: r.storekeeper, [t('c.items')]: r.items.length, [t('pm.value')]: r.total == null ? '' : +r.total.toFixed(3), [t('c.date')]: fmtDateTime(r.createdAt),
+          ...(decidedCol ? { [t('pm.decidedBy')]: r.m.decidedByName || '', [t('st.' + kind)]: r.m.decidedAt ? fmtDateTime(r.m.decidedAt) : '' } : {}) } })) };
+  } });
   const unsub = LIVE.watch(PM_PATHS, draw);
   draw();
-  return unsub;
+  return () => { unsub(); closeDrill(); };
 };

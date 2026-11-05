@@ -19,7 +19,28 @@ function oTime(o) {
   return Number.isFinite(time) ? time : 0;
 }
 const oNum = o => (o && (o.orderNumber || o.invoiceNumber || o.invoiceNo || o.orderId || o.number)) || '-';
-const oCustomer = o => (o && o.customerId ? (LIVE.cache.customers || {})[o.customerId] || null : null);
+/* Orders are tied to customers by phone number (the cashier saves the customer's name and phone
+   on the order, not its id) — customerId is used only when an order carries a valid one. */
+const phoneKey = v => { const d = toLatin(String(v || '')).replace(/\D/g, '').replace(/^00965/, '').replace(/^965(?=\d{8}$)/, ''); return d; };
+let custIdxSrc = null, custIdx = new Map();
+function custPhoneIndex() {
+  const cs = LIVE.cache.customers || {};
+  if (cs !== custIdxSrc) { custIdxSrc = cs; custIdx = new Map(); Object.entries(cs).forEach(([id, c]) => { const k = c && phoneKey(c.phone); if (k && !custIdx.has(k)) custIdx.set(k, id); }); }
+  return custIdx;
+}
+const oCustId = o => { if (!o) return null; const cs = LIVE.cache.customers || {}; if (o.customerId && cs[o.customerId]) return o.customerId;
+  const k = phoneKey(o.customerPhone || o.phoneNumber || o.phone); return (k && custPhoneIndex().get(k)) || null; };
+const oCustomer = o => { const id = oCustId(o); return id ? (LIVE.cache.customers || {})[id] || null : null; };
+/* The cashier's fixed area list (customer addresses and delivery prices are keyed by these names) */
+const CASHIER_AREAS = ['السرة', 'الزهراء', 'السلام', 'حطين', 'الفيحاء', 'القادسية', 'مشرف', 'كيفان', 'الروضة', 'العديلية',
+  'الخالدية', 'النزهة', 'الدعية', 'المنصورية', 'قرطبة', 'الشامية', 'الرميثية', 'عبدالله السالم', 'الجابرية',
+  'بيان', 'الصديق', 'الشهداء', 'اليرموك', 'الفروانية', 'خيطان', 'بنيد القار', 'الدسمة', 'حولي', 'ميدان حولي',
+  'مبارك الكبير', 'القصور', 'الرابية', 'العمرية', 'الرقعي', 'غرناطة', 'القرين', 'الشويخ', 'المسيلة', 'الكويت',
+  'اشبيليا', 'السالمية', 'شرق', 'الرحاب', 'المرقاب', 'صباح السالم', 'الفردوس', 'صباح الناصر', 'المسايل',
+  'الاندلس', 'العارضية', 'سلوى', 'العدان', 'الشعب', 'هدية', 'الصليبيخات', 'الجهراء', 'الفنطاس', 'سعد العبدالله',
+  'الفنيطيس', 'الدوحة', 'العقيلة', 'جابر العلي', 'جابر الاحمد', 'عبدالله مبارك', 'المهبولة', 'المنقف', 'الاحمدي',
+  'الصليبية', 'الصباحية', 'فهد الاحمد', 'صبحان', 'ابو فطيرة', 'ابو الحصانية', 'الظهر', 'ابو حليفة', 'الفحيحيل',
+  'جليب الشيوخ', 'ام الهيمان', 'المطلاع', 'صباح الاحمد', 'الوفرة'];
 const oCustName = o => (o && (o.customerName || o.name)) || nameOf(oCustomer(o)) || '-';
 const oPhone = o => (o && (o.customerPhone || o.phoneNumber || o.phone)) || (oCustomer(o) || {}).phone || '-';
 const PLATFORM_BRANCH = { hawalli: ['فرع حولي', 'Hawalli'], yarmouk: ['فرع اليرموك', 'Yarmouk'], abu: ['فرع أبو الحصانية', 'Abu Al-Hasaniya'] };
@@ -208,6 +229,18 @@ function bindSelection(view, st, getIds, onChange) {
 }
 const perHtml = st => `<label class="per-field"><small>${t('it.perPage')}</small><span class="select mini"><select data-per>${[10, 50, 100].map(n => `<option ${st.per === n ? 'selected' : ''}>${n}</option>`).join('')}</select>${icon('chevDown')}</span></label>`;
 
+/* Card page listing invoices one by one (row → invoice details when the order has an id) */
+function kdOrders({ title, sub, ic = 'receipt', file, list, chips }) {
+  const fee = list.reduce((s, o) => s + oFee(o), 0), net = list.reduce((s, o) => s + oSub(o), 0), tot = list.reduce((s, o) => s + oTotal(o), 0);
+  const byId = new Map(list.filter(o => o.id).map(o => [String(o.id), o]));
+  return { title, sub, ic, file, onRow: id => { const o = byId.get(id); if (o) invoiceDetails(o); },
+    chips: chips || [[t('kd.orders'), fmtNum(list.length)], [t('o.net'), fmtMoney(net)], [t('o.fee'), fmtMoney(fee)], [t('o.grand'), fmtMoney(tot)]],
+    cols: [{ h: t('o.number') }, { h: t('o.customer') }, { h: t('c.phone') }, { h: t('o.zone') }, { h: t('o.branch') }, { h: t('o.payment') }, { h: t('o.fee'), end: 1 }, { h: t('o.grand'), end: 1 }, { h: t('c.date') }],
+    rows: list.map(o => ({ id: o.id ? String(o.id) : null, text: `${oNum(o)} ${oCustName(o)} ${oPhone(o)} ${oZone(o)} ${oBranch(o)} ${oPay(o)}`,
+      cells: [`<b class="mono">#${esc(oNum(o))}</b>`, esc(oCustName(o)), `<span class="mono">${esc(oPhone(o))}</span>`, esc(oZone(o)), esc(oBranch(o)), esc(oPay(o)), fmtMoney(oFee(o)), `<b>${fmtMoney(oTotal(o))}</b>`, `<span class="date">${fmtDateTime(oTime(o))}</span>`],
+      x: { [t('o.number')]: oNum(o), [t('o.customer')]: oCustName(o), [t('c.phone')]: oPhone(o), [t('o.zone')]: oZone(o), [t('o.branch')]: oBranch(o), [t('o.payment')]: oPay(o), [t('o.fee')]: oFee(o), [t('o.grand')]: oTotal(o), [t('c.date')]: fmtDateTime(oTime(o)) } })) };
+}
+
 /* =====================================================================
    الطلبات — cashier invoices
    ===================================================================== */
@@ -259,7 +292,7 @@ PAGES.orders = view => {
     return `<tr data-id="${esc(x.id)}" class="${first ? 'row-in' : ''}${c ? ' is-cancelled' : ''}" style="--r:${i}">
       <td class="sel-col"><input type="checkbox" data-sel ${st.sel.has(x.id) ? 'checked' : ''} aria-label="${esc(oNum(o))}"></td>
       <td data-label="${t('o.number')}"><span class="cell-2"><b class="mono">#${esc(oNum(o))}</b>${c ? `<small class="cancel-note">${esc(oCancelText(o))}</small>` : ''}${o.isInvoiceDeferred && o.accountingDate ? `<small class="defer-note">${icon('clock')}${t('o.deferredTo')} ${esc(o.accountingDate)}</small>` : ''}</span></td>
-      <td data-label="${t('o.customer')}">${o.customerId ? `<button type="button" class="link" data-o="customer">${esc(oCustName(o))}</button>` : esc(oCustName(o))}</td>
+      <td data-label="${t('o.customer')}">${oCustId(o) ? `<button type="button" class="link" data-o="customer">${esc(oCustName(o))}</button>` : esc(oCustName(o))}</td>
       <td data-label="${t('o.zone')}">${esc(oZone(o))}</td>
       <td data-label="${t('c.phone')}"><span class="mono">${esc(oPhone(o))}</span></td>
       <td data-label="${t('c.date')}"><span class="date">${fmtDateTime(oTime(o))}</span></td>
@@ -288,9 +321,9 @@ PAGES.orders = view => {
     const live = list.filter(x => !oCancelled(x.o));
     setKpis($('#oK', view), [
       kpiCard({ label: t('o.kCount'), value: live.length, ic: 'receipt', tone: 'c1' }),
-      kpiCard({ label: t('o.net'), value: live.reduce((s, x) => s + oSub(x.o), 0), kind: 'money', ic: 'wallet', tone: 'c2' }),
-      kpiCard({ label: t('o.fee'), value: live.reduce((s, x) => s + oFee(x.o), 0), kind: 'money', ic: 'bike', tone: 'c3' }),
-      kpiCard({ label: t('o.grand'), value: live.reduce((s, x) => s + oTotal(x.o), 0), kind: 'money', ic: 'chart', tone: 'c4' })
+      kpiCard({ label: t('o.net'), value: live.reduce((s, x) => s + oSub(x.o), 0), kind: 'money', ic: 'wallet', tone: 'c2', drill: 'net' }),
+      kpiCard({ label: t('o.fee'), value: live.reduce((s, x) => s + oFee(x.o), 0), kind: 'money', ic: 'bike', tone: 'c3', drill: 'fee' }),
+      kpiCard({ label: t('o.grand'), value: live.reduce((s, x) => s + oTotal(x.o), 0), kind: 'money', ic: 'chart', tone: 'c4', drill: 'grand' })
     ].join(''), first);
     setHtml($('#oBranch', view), `<option value="all">${t('allBranches')}</option>` + optsHtml(sortedOpts(LIVE.cache.branches), st.branch));
     setHtml($('#oCashier', view), `<option value="all">${t('o.allCashiers')}</option>` + optsHtml(Object.entries(LIVE.cache.cashiers || {}).map(([id, c]) => [id, (c && (c.name || c.code)) || id]), st.cashier));
@@ -330,7 +363,7 @@ PAGES.orders = view => {
   /* Orders of one customer (the old page's customer pop-up) */
   function customerOrders(customerId) {
     const c = (LIVE.cache.customers || {})[customerId];
-    const list = Object.entries(LIVE.cache.orders || {}).map(([id, o]) => ({ id, o })).filter(x => x.o && x.o.customerId === customerId).sort((a, b) => (b.o.createdAt || 0) - (a.o.createdAt || 0));
+    const list = Object.entries(LIVE.cache.orders || {}).map(([id, o]) => ({ id, o })).filter(x => x.o && oCustId(x.o) === customerId).sort((a, b) => (b.o.createdAt || 0) - (a.o.createdAt || 0));
     const dr = freshDrawer(true);
     dr.innerHTML = `
       <header class="dr-head"><span class="ph-ic sm">${icon('user')}</span><div><h2 id="drawerTitle">${esc(nameOf(c) || oCustName(list[0] ? list[0].o : {}))}</h2><p>${esc((c && c.phone) || '')} · ${list.length} ${t('o.ordersWord')}</p></div>
@@ -547,12 +580,24 @@ PAGES.orders = view => {
     const id = b.closest('tr') && b.closest('tr').dataset.id, o = id && (LIVE.cache.orders || {})[id]; if (!o) return;
     if (a === 'print1' || a === 'pdf') return printInvoice(o);
     if (a === 'edit') return openEdit(id);
-    if (a === 'customer') return customerOrders(o.customerId);
+    if (a === 'customer') return customerOrders(oCustId(o));
   });
 
   const unsub = LIVE.watch([...OR_PATHS, 'products'], draw);
   draw();
-  return () => { unsub(); zones.destroy(); freshDrawer(false); };
+  // Card pages: the same filtered, non-cancelled orders the cards add up, broken down
+  const closeDrill = kpiDrills(view, { paths: OR_PATHS, ready: () => LIVE.loaded(OR_PATHS), build: kind => {
+    const live = sortedOrders().filter(x => matches(x.o) && !oCancelled(x.o)).map(x => x.o);
+    const sub = t('kd.filtered');
+    if (kind === 'net') return { ...kdBreakdown({ title: `${t('o.net')} ${t('kd.byBranch')}`, sub, ic: 'wallet', file: 'orders-net-by-branch.xlsx', groupH: t('kd.branch'), countH: t('kd.orders'), valueH: t('o.net'),
+      items: kdGroup(live, o => o.branchId || oBranch(o), oBranch, oSub) }), onRow: id => { if (LIVE.cache.branches && LIVE.cache.branches[id]) { st.branch = id; st.page = 1; closeDrill(); draw(); } } };
+    if (kind === 'fee') return kdBreakdown({ title: `${t('o.fee')} ${t('kd.byArea')}`, sub, ic: 'bike', file: 'orders-delivery-by-area.xlsx', groupH: t('kd.area'), countH: t('kd.orders'), valueH: t('o.fee'),
+      items: kdGroup(live.filter(o => oFee(o) > 0), oZone, oZone, oFee) });
+    if (kind === 'grand') return kdBreakdown({ title: `${t('o.grand')} ${t('kd.byPay')}`, sub, ic: 'chart', file: 'orders-total-by-payment.xlsx', groupH: t('kd.pay'), countH: t('kd.orders'), valueH: t('o.grand'),
+      items: kdGroup(live, oPay, oPay, oTotal) });
+    return null;
+  } });
+  return () => { unsub(); closeDrill(); zones.destroy(); freshDrawer(false); };
 };
 
 /* =====================================================================
@@ -617,9 +662,9 @@ PAGES['online-orders'] = view => {
     const list = rows.filter(x => matches(x.o)), live = list.filter(x => !oCancelled(x.o));
     setKpis($('#ooK', view), [
       kpiCard({ label: t('o.kCount'), value: live.length, ic: 'bag', tone: 'c1' }),
-      kpiCard({ label: t('oo.kDelivery'), value: live.filter(x => String(x.o.mode || x.o.orderType || '').toLowerCase() === 'delivery').length, ic: 'bike', tone: 'c3' }),
-      kpiCard({ label: t('o.fee'), value: live.reduce((s, x) => s + oFee(x.o), 0), kind: 'money', ic: 'wallet', tone: 'c2' }),
-      kpiCard({ label: t('o.grand'), value: live.reduce((s, x) => s + oTotal(x.o), 0), kind: 'money', ic: 'chart', tone: 'c4' })
+      kpiCard({ label: t('oo.kDelivery'), value: live.filter(x => String(x.o.mode || x.o.orderType || '').toLowerCase() === 'delivery').length, ic: 'bike', tone: 'c3', drill: 'delivery' }),
+      kpiCard({ label: t('o.fee'), value: live.reduce((s, x) => s + oFee(x.o), 0), kind: 'money', ic: 'wallet', tone: 'c2', drill: 'fee' }),
+      kpiCard({ label: t('o.grand'), value: live.reduce((s, x) => s + oTotal(x.o), 0), kind: 'money', ic: 'chart', tone: 'c4', drill: 'grand' })
     ].join(''), first);
     const branchIds = [...new Set(rows.map(x => String(x.o.branchId || '')).filter(Boolean))];
     setHtml($('#ooBranch', view), `<option value="all">${t('allBranches')}</option>` + branchIds.map(id => `<option value="${esc(id)}" ${st.branch === id ? 'selected' : ''}>${esc(oBranch({ branchId: id }))}</option>`).join(''));
@@ -691,26 +736,45 @@ PAGES['online-orders'] = view => {
   clearInterval(OO.timer); OO.timer = setInterval(refreshOnline, 60000);
   const unsub = LIVE.watch(OO_PATHS, draw);
   draw();
-  return () => { unsub(); OO.subs.delete(draw); clearInterval(OO.timer); OO.timer = 0; };
+  const closeDrill = kpiDrills(view, { paths: OO_PATHS, ready: () => OO.loaded && LIVE.loaded(OO_PATHS), build: kind => {
+    const live = filteredList().filter(x => !oCancelled(x.o)).map(x => x.o), sub = t('kd.filtered');
+    if (kind === 'delivery') return { ...kdOrders({ title: t('oo.kDelivery'), sub, ic: 'bike', file: 'online-delivery-orders.xlsx', list: live.filter(o => String(o.mode || o.orderType || '').toLowerCase() === 'delivery') }), onRow: null };
+    if (kind === 'fee') return kdBreakdown({ title: `${t('o.fee')} ${t('kd.byArea')}`, sub, ic: 'wallet', file: 'online-delivery-by-area.xlsx', groupH: t('kd.area'), countH: t('kd.orders'), valueH: t('o.fee'),
+      items: kdGroup(live.filter(o => oFee(o) > 0), oZone, oZone, oFee) });
+    if (kind === 'grand') return kdBreakdown({ title: `${t('o.grand')} ${t('kd.byBranch')}`, sub, ic: 'chart', file: 'online-total-by-branch.xlsx', groupH: t('kd.branch'), countH: t('kd.orders'), valueH: t('o.grand'),
+      items: kdGroup(live, o => String(o.branchId || '') || oBranch(o), oBranch, oTotal) });
+    return null;
+  } });
+  const drillSub = () => closeDrill.refresh();
+  OO.subs.add(drillSub);
+  return () => { unsub(); closeDrill(); OO.subs.delete(drillSub); OO.subs.delete(draw); clearInterval(OO.timer); OO.timer = 0; };
 };
 
 /* =====================================================================
    العملاء — list, customer details and favourite-product views (as the old page)
    ===================================================================== */
-const CU_PATHS = ['customers', 'deliveryZones', 'orders', 'branches', 'orderTypes', 'paymentMethods', 'products'];
+const CU_PATHS = ['customers', 'deliveryZones', 'orders', 'branches', 'orderTypes', 'paymentMethods', 'products', 'cashiers', 'customerLevelSettings'];
+/* Addresses as the cashier saves them: [{ area: 'السرة', details: 'ق 6 ش 12' }] (area = the area's name).
+   Older records written by this page used zoneId — read both. */
+const custAreaOf = a => (a && (a.area || nameOf((LIVE.cache.deliveryZones || {})[a.zoneId]))) || '';
 const custAddresses = c => (!c ? [] : Array.isArray(c.addresses) && c.addresses.filter(Boolean).length ? c.addresses.filter(Boolean)
-  : c.zoneId || c.address ? [{ id: 'default', zoneId: c.zoneId || '', details: c.address || '' }] : []);
-const custZoneIds = c => [...new Set([...custAddresses(c).map(a => a && a.zoneId).filter(Boolean), ...(c && c.zoneId ? [c.zoneId] : [])])];
+  : c.zoneId || c.address ? [{ zoneId: c.zoneId || '', details: c.address || '' }] : []);
+const custAreas = c => [...new Set(custAddresses(c).map(custAreaOf).map(x => String(x).trim()).filter(Boolean))];
 function custAddressText(c) {
   const list = custAddresses(c); if (!list.length) return '-';
-  const z = nameOf((LIVE.cache.deliveryZones || {})[list[0].zoneId]) || '-';
-  return `${z} - ${list[0].details || '-'}${list.length > 1 ? ` (+${list.length - 1})` : ''}`;
+  const a = list[0], area = custAreaOf(a), det = String(a.details || '').trim();
+  return `${[area, det].filter(Boolean).join(' - ') || '-'}${list.length > 1 ? ` (+${list.length - 1})` : ''}`;
 }
+/* Level rules — saved in customerLevelSettings, editable from «إعدادات المستويات».
+   Counted over the last `days` days: number of orders, total paid, and how recent the last order is.
+   Both orders and total must be reached and the last order must be recent; VVIP is checked first. */
+const LEVEL_DEFAULTS = { vvipOrders: 8, vvipSpend: 150, vvipRecent: 30, vipOrders: 4, vipSpend: 60, vipRecent: 45, days: 90 };
+const levelRules = () => { const r = LIVE.cache.customerLevelSettings || {}; const o = {}; Object.keys(LEVEL_DEFAULTS).forEach(k => { const v = Number(r[k]); o[k] = r[k] !== undefined && r[k] !== null && r[k] !== '' && Number.isFinite(v) && v >= 0 ? v : LEVEL_DEFAULTS[k]; }); return o; };
 function custStats(entries) {
   const m = {};
   entries.forEach(o => {
-    if (!o.customerId) return;
-    const s = (m[o.customerId] ||= { total: 0, count: 0, first: null, last: null });
+    const id = oCustId(o); if (!id) return;
+    const s = (m[id] ||= { total: 0, count: 0, first: null, last: null });
     const at = oTime(o);
     s.total += Number(o.total || 0); s.count++;
     s.first = s.first === null ? at : Math.min(s.first, at);
@@ -718,37 +782,57 @@ function custStats(entries) {
   });
   return m;
 }
-function custLevel(s) {
+const statAvg = s => (s && s.count ? s.total / s.count : 0);
+const statGap = s => (s && s.count > 1 ? (s.last - s.first) / (s.count - 1) / 86400000 : null);
+function custLevel(s, r = levelRules(), now = Date.now()) {
   if (!s || !s.count) return 'regular';
-  const avg = s.total / s.count, gap = s.count > 1 ? (s.last - s.first) / (s.count - 1) / 86400000 : null;
-  if (avg >= 20 && gap !== null && gap <= 2) return 'vvip';
-  if (avg >= 10 && gap !== null && gap <= 3) return 'vip';
-  return 'regular';
+  const ago = s.last ? (now - s.last) / 86400000 : Infinity;
+  const hit = p => s.count >= r[p + 'Orders'] && s.total >= r[p + 'Spend'] && (!r[p + 'Recent'] || ago <= r[p + 'Recent']);
+  return hit('vvip') ? 'vvip' : hit('vip') ? 'vip' : 'regular';
 }
 const LEVEL_TONE = { regular: 'neutral', vip: 'info', vvip: 'accent' };
-const custOrderAddress = o => { const z = nameOf((LIVE.cache.deliveryZones || {})[o && o.deliveryZoneId]), d = String((o && o.deliveryAddress) || '').trim(); return z && d ? `${z} - ${d}` : d || z || '-'; };
-const custOrderType = o => nameOf((LIVE.cache.orderTypes || {})[o && o.orderTypeId]) || (o && o.orderTypeName) || '-';
+const custOrderAddress = o => {
+  const z = (o && (nameOf((LIVE.cache.deliveryZones || {})[o.deliveryZoneId]) || o.deliveryZoneName || o.area)) || '', d = String((o && (o.deliveryAddress || o.address)) || '').trim();
+  return z && d ? (d.startsWith(z) ? d : `${z} - ${d}`) : d || z || '-';
+};
+const custOrderType = o => oType(o);
 const productsAmount = o => Number(o.subtotal ?? o.netTotal ?? (Number(o.total || 0) - Number(o.deliveryFee || 0)));
 
 PAGES.customers = view => {
-  const st = (S.cu ||= { q: '', zones: [], level: 'all', sort: 'desc', from: '', to: '', blocked: false, per: 10, page: 1, sel: new Set(), detail: null, fav: null, imp: null });
+  const st = (S.cu ||= { q: '', zones: [], level: 'all', sort: 'desc', from: '', to: '', blocked: false, per: 10, page: 1, sel: new Set(), detail: null, fav: null, imp: null, drill: null });
   let first = true, pageIds = [], saving = false, zones = null;
-  let statsSrc = null, statsAll = {};
+  let statsAll = {};
+  // Area filter: the cashier's areas + any other area written on a customer's address
+  const areaItems = () => { const set = new Set(CASHIER_AREAS); Object.values(LIVE.cache.customers || {}).forEach(c => custAreas(c).forEach(a => set.add(a))); return [...set].sort((a, b) => a.localeCompare(b, 'ar')).map(a => [a, a]); };
 
+  // Level window: the rules' «days» (0 = every order). Cached per orders/customers/rules snapshot.
+  let statsKey = null;
   function allStats() {
-    if (LIVE.cache.orders !== statsSrc) { statsSrc = LIVE.cache.orders; statsAll = custStats(Object.values(LIVE.cache.orders || {}).filter(o => o && !oCancelled(o))); }
+    const r = levelRules(), key = [LIVE.cache.orders, LIVE.cache.customers, r.days];
+    if (!statsKey || key.some((v, i) => v !== statsKey[i])) {
+      statsKey = key;
+      const since = r.days > 0 ? Date.now() - r.days * 86400000 : 0;
+      statsAll = custStats(Object.values(LIVE.cache.orders || {}).filter(o => o && !oCancelled(o) && oTime(o) >= since));
+    }
     return statsAll;
   }
+  let lifeKey = null, lifeAll = {};
+  function lifeStats() {
+    const key = [LIVE.cache.orders, LIVE.cache.customers];
+    if (!lifeKey || key.some((v, i) => v !== lifeKey[i])) { lifeKey = key; lifeAll = custStats(Object.values(LIVE.cache.orders || {}).filter(o => o && !oCancelled(o))); }
+    return lifeAll;
+  }
+  const levelOf = (id, c, r) => c.level || custLevel(allStats()[id], r);
   function entries() {
-    const all = allStats(), useRange = !!(st.from || st.to);
-    const range = useRange ? custStats(Object.values(LIVE.cache.orders || {}).filter(o => o && !oCancelled(o) && inRange(oTime(o), st.from, st.to))) : all;
+    const useRange = !!(st.from || st.to), r = levelRules();
+    const range = useRange ? custStats(Object.values(LIVE.cache.orders || {}).filter(o => o && !oCancelled(o) && inRange(oTime(o), st.from, st.to))) : lifeStats();
     const q = normQ(st.q);
     return Object.entries(LIVE.cache.customers || {}).filter(([, c]) => c && typeof c === 'object').map(([id, c]) => {
       const s = range[id] || { total: 0, count: 0, first: null, last: null };
-      const zid = custZoneIds(c)[0] || c.zoneId;
-      return { id, c, zone: nameOf((LIVE.cache.deliveryZones || {})[zid]) || '-', addr: custAddressText(c), last: s.last, count: s.count,
-        avg: s.count ? s.total / s.count : 0, gap: s.count > 1 ? (s.last - s.first) / (s.count - 1) / 86400000 : null, level: c.level || custLevel(all[id]) };
-    }).filter(x => (!st.zones.length || custZoneIds(x.c).some(z => st.zones.includes(z)))
+      const areas = custAreas(c);
+      return { id, c, areas, zone: areas[0] || '-', addr: custAddressText(c), last: s.last, count: s.count,
+        avg: statAvg(s), gap: statGap(s), level: levelOf(id, c, r) };
+    }).filter(x => (!st.zones.length || x.areas.some(z => st.zones.includes(z)))
       && (st.level === 'all' || x.level === st.level) && (!st.blocked || x.c.isBlocked) && (!useRange || x.count > 0)
       && (!q || normQ(`${nameOf(x.c)} ${x.c.phone || ''} ${x.zone} ${x.addr}`).includes(q)))
       .sort((a, b) => ((b.count - a.count) * (st.sort === 'asc' ? -1 : 1)) || ((b.last || 0) - (a.last || 0)));
@@ -761,8 +845,10 @@ PAGES.customers = view => {
     if (st.detail && LIVE.loaded(['customers']) && !c) { st.detail = null; st.fav = null; }
     if (st.detail && st.fav) return mountFav();
     if (st.detail) return mountDetail();
+    if (st.drill) { view.innerHTML = '<div id="cuDrill"></div>'; return draw(); }
     view.innerHTML = `
-      ${pageHeader('customers', `<button class="btn btn-ghost" data-cu="import">${icon('upload')}<span>${t('cu.import')}</span></button>
+      ${pageHeader('customers', `<button class="btn btn-ghost" data-cu="levels">${icon('sliders')}<span>${t('cu.levelSettings')}</span></button>
+        <button class="btn btn-ghost" data-cu="import">${icon('upload')}<span>${t('cu.import')}</span></button>
         <button class="btn btn-ghost" data-cu="export">${icon('download')}<span>${t('cu.download')}</span><em class="sel-n"></em></button>
         <button class="btn btn-primary" data-cu="new">${icon('plus')}<span>${t('cu.new')}</span></button>`, t('cu.sub'))}
       <section class="kpis" id="cuK"></section>
@@ -782,7 +868,7 @@ PAGES.customers = view => {
           <tbody id="cuBody"></tbody></table></div>
         <footer class="pager" id="cuPager"></footer>
       </section>`;
-    zones = msControl($('#cuZones', view), { items: zoneItems, get: () => st.zones, set: v => { st.zones = v; st.page = 1; zones.paint(); draw(); } });
+    zones = msControl($('#cuZones', view), { items: areaItems, get: () => st.zones, set: v => { st.zones = v; st.page = 1; zones.paint(); draw(); } });
     let deb;
     $('#cuQ', view).addEventListener('input', e => { clearTimeout(deb); deb = setTimeout(() => { st.q = e.target.value.trim(); st.page = 1; draw(); }, 150); });
     [['#cuLevel', 'level'], ['#cuSort', 'sort'], ['#cuFrom', 'from'], ['#cuTo', 'to']].forEach(([sel, k]) => $(sel, view).addEventListener('change', e => { st[k] = e.target.value; st.page = 1; draw(); }));
@@ -794,16 +880,17 @@ PAGES.customers = view => {
 
   function drawList() {
     const body = $('#cuBody', view); if (!body) return;
-    if (!LIVE.loaded(CU_PATHS)) { setHtml(body, skeletonRows(6, 12)); $('#cuK', view).innerHTML = skeletonKpis(); return; }
+    // Counts, averages and levels need every order, not just the first page of them
+    if (!LIVE.complete(CU_PATHS)) { setHtml(body, skeletonRows(6, 12)); $('#cuK', view).innerHTML = skeletonKpis(); return; }
     const custs = LIVE.cache.customers || {};
     [...st.sel].forEach(id => { if (!custs[id]) st.sel.delete(id); });
-    const all = allStats(), list = entries();
+    const all = lifeStats(), r = levelRules(), list = entries();
     const cl = Object.entries(custs).filter(([, c]) => c && typeof c === 'object');
     setKpis($('#cuK', view), [
       kpiCard({ label: t('cu.kTotal'), value: cl.length, ic: 'users', tone: 'c1' }),
-      kpiCard({ label: t('cu.kOrdering'), value: cl.filter(([id]) => all[id]).length, ic: 'receipt', tone: 'c2' }),
-      kpiCard({ label: t('cu.kVip'), value: cl.filter(([id, c]) => (c.level || custLevel(all[id])) !== 'regular').length, ic: 'star', tone: 'c3' }),
-      kpiCard({ label: t('cu.kBlocked'), value: cl.filter(([, c]) => c.isBlocked).length, ic: 'shield', tone: 'c4' })
+      kpiCard({ label: t('cu.kOrdering'), value: cl.filter(([id]) => all[id]).length, ic: 'receipt', tone: 'c2', drill: 'ordering' }),
+      kpiCard({ label: t('cu.kVip'), value: cl.filter(([id, c]) => levelOf(id, c, r) !== 'regular').length, ic: 'star', tone: 'c3', drill: 'vip' }),
+      kpiCard({ label: t('cu.kBlocked'), value: cl.filter(([, c]) => c.isBlocked).length, ic: 'shield', tone: 'c4', drill: 'blocked' })
     ].join(''), first);
     zones && zones.paint();
     setHtml($('#cuPager', view), pagerHtml(st, list.length));
@@ -820,7 +907,7 @@ PAGES.customers = view => {
       <td data-label="${t('cu.orders')}" class="end num">${x.count}</td>
       <td data-label="${t('cu.avgValue')}" class="end num">${fmtNum(x.avg, 3, 3)}</td>
       <td data-label="${t('cu.avgGap')}" class="end num">${x.gap === null ? '—' : x.gap.toFixed(1)}</td>
-      <td data-label="${t('cu.level')}"><span class="badge tone-${LEVEL_TONE[x.level] || 'neutral'}">${t('cu.lv.' + (LEVEL_TONE[x.level] ? x.level : 'regular'))}</span></td>
+      <td data-label="${t('cu.level')}"><span class="badge tone-${LEVEL_TONE[x.level] || 'neutral'}" ${x.c.level ? `title="${t('cu.lvManual')}"` : ''}>${t('cu.lv.' + (LEVEL_TONE[x.level] ? x.level : 'regular'))}</span></td>
       <td data-label="${t('cu.status')}">${x.c.isBlocked ? `<span class="badge tone-danger" ${x.c.blockReason ? `title="${esc(x.c.blockReason)}"` : ''}><i></i>${t('cu.blocked')}</span>` : `<span class="badge tone-success"><i></i>${t('cu.active')}</span>`}</td>
       <td class="act-col"><div class="row-acts">${rowMenuBtn()}
         <button class="btn-icon sm" data-cu="details" aria-label="${t('cu.details')}">${icon('eye')}</button>
@@ -833,7 +920,7 @@ PAGES.customers = view => {
     first = false;
   }
 
-  const detailOrders = id => Object.entries(LIVE.cache.orders || {}).filter(([, o]) => o && o.customerId === id).map(([oid, o]) => ({ id: oid, o, at: oTime(o) }))
+  const detailOrders = id => Object.entries(LIVE.cache.orders || {}).filter(([, o]) => o && oCustId(o) === id).map(([oid, o]) => ({ id: oid, o, at: oTime(o) }))
     .filter(x => inRange(x.at, st.from, st.to) || (!st.from && !st.to && x.at)).sort((a, b) => b.at - a.at);
   function favorite(rows) {
     const counts = {};
@@ -851,12 +938,12 @@ PAGES.customers = view => {
   const dateBar = () => `<div class="toolbar it-tools"><label class="date-field"><small>${t('c.from')}</small><input type="date" id="cuFrom" value="${st.from}"></label><label class="date-field"><small>${t('c.to')}</small><input type="date" id="cuTo" value="${st.to}"></label></div>`;
 
   function mountDetail() {
-    view.innerHTML = `${backBar(t('cu.backList'))}<div id="cuDetail"></div>`;
+    view.innerHTML = `${backBar(t(st.drill ? 'kd.back' : 'cu.backList'))}<div id="cuDetail"></div>`;
     draw();
   }
   function drawDetail() {
     const box = $('#cuDetail', view); if (!box) return;
-    if (!LIVE.loaded(CU_PATHS)) { setHtml(box, `<section class="kpis">${skeletonKpis()}</section>`); return; }
+    if (!LIVE.complete(CU_PATHS)) { setHtml(box, `<section class="kpis">${skeletonKpis()}</section>`); return; }
     const c = (LIVE.cache.customers || {})[st.detail]; if (!c) { st.detail = null; mount(); return; }
     const rows = detailOrders(st.detail), fav = favorite(rows);
     const tot = rows.reduce((a, { o }) => (oCancelled(o) ? a : { p: a.p + productsAmount(o), d: a.d + Number(o.deliveryFee || 0), t: a.t + Number(o.total || 0) }), { p: 0, d: 0, t: 0 });
@@ -869,7 +956,7 @@ PAGES.customers = view => {
       <section class="card table-card">${dateBar()}
         <div class="table-wrap"><table class="dt it-table"><thead><tr><th>${t('o.number')}</th><th>${t('o.branch')}</th><th>${t('o.cashier')}</th><th>${t('o.type')}</th><th>${t('o.address')}</th><th class="end">${t('cu.productsAmount')}</th><th class="end">${t('o.fee')}</th><th class="end">${t('cu.totalSales')}</th><th>${t('c.date')}</th></tr></thead>
         <tbody>${rows.length ? rows.map(({ o, at }) => `<tr class="${oCancelled(o) ? 'is-cancelled' : ''}"><td data-label="${t('o.number')}"><span class="cell-2"><b class="mono">#${esc(oNum(o))}</b>${oCancelled(o) ? `<small class="cancel-note">${esc(oCancelText(o))}</small>` : ''}</span></td>
-          <td data-label="${t('o.branch')}">${esc(nameOf((LIVE.cache.branches || {})[o.branchId]) || o.branchName || '-')}</td><td data-label="${t('o.cashier')}">${esc(o.cashierName || '-')}</td><td data-label="${t('o.type')}">${esc(custOrderType(o))}</td>
+          <td data-label="${t('o.branch')}">${esc(nameOf((LIVE.cache.branches || {})[o.branchId]) || o.branchName || '-')}</td><td data-label="${t('o.cashier')}">${esc(oCashier(o))}</td><td data-label="${t('o.type')}">${esc(custOrderType(o))}</td>
           <td data-label="${t('o.address')}"><span class="clip">${esc(custOrderAddress(o))}</span></td><td data-label="${t('cu.productsAmount')}" class="end num">${fmtNum(productsAmount(o), 3, 3)}</td><td data-label="${t('o.fee')}" class="end num">${fmtMoney(Number(o.deliveryFee || 0))}</td>
           <td data-label="${t('cu.totalSales')}" class="end"><b class="num">${fmtMoney(Number(o.total || 0))}</b></td><td data-label="${t('c.date')}"><span class="date">${fmtDateTime(at)}</span></td></tr>`).join('')
           : `<tr class="empty"><td colspan="9"><div class="empty-state">${icon('receipt')}<b>${t('cu.noOrders')}</b></div></td></tr>`}</tbody></table></div></section>`);
@@ -882,7 +969,7 @@ PAGES.customers = view => {
   }
   function detailExport() {
     const rows = detailOrders(st.detail);
-    excelOut(rows.map(({ o, at }) => ({ [t('o.number')]: oNum(o), [t('o.status')]: oCancelText(o) || t('o.active'), [t('o.branch')]: nameOf((LIVE.cache.branches || {})[o.branchId]) || o.branchName || '-', [t('o.cashier')]: o.cashierName || '-',
+    excelOut(rows.map(({ o, at }) => ({ [t('o.number')]: oNum(o), [t('o.status')]: oCancelText(o) || t('o.active'), [t('o.branch')]: nameOf((LIVE.cache.branches || {})[o.branchId]) || o.branchName || '-', [t('o.cashier')]: oCashier(o),
       [t('o.type')]: custOrderType(o), [t('o.address')]: custOrderAddress(o), [t('cu.productsAmount')]: +productsAmount(o).toFixed(3), [t('o.fee')]: Number(o.deliveryFee || 0), [t('cu.totalSales')]: Number(o.total || 0), [t('c.date')]: fmtDateTime(at) })), `customer-${st.detail}-orders.xlsx`);
   }
   function detailPrint() {
@@ -890,7 +977,7 @@ PAGES.customers = view => {
     const tot = rows.reduce((a, { o }) => (oCancelled(o) ? a : { p: a.p + productsAmount(o), d: a.d + Number(o.deliveryFee || 0), t: a.t + Number(o.total || 0) }), { p: 0, d: 0, t: 0 });
     printDoc(t('customers'), [[t('c.name'), nameOf(c) || '-'], [t('c.phone'), c.phone || '-'], [t('c.from'), st.from || '-'], [t('c.to'), st.to || '-']],
       [t('o.number'), t('o.branch'), t('o.cashier'), t('o.type'), t('o.address'), t('cu.productsAmount'), t('o.fee'), t('cu.totalSales'), t('c.date')],
-      rows.map(({ o, at }) => [[oNum(o), oCancelText(o)].filter(Boolean).join(' — '), nameOf((LIVE.cache.branches || {})[o.branchId]) || o.branchName || '-', o.cashierName || '-', custOrderType(o), custOrderAddress(o), fmtNum(productsAmount(o), 3, 3), moneyPlain(Number(o.deliveryFee || 0)), moneyPlain(Number(o.total || 0)), fmtDateTime(at)]),
+      rows.map(({ o, at }) => [[oNum(o), oCancelText(o)].filter(Boolean).join(' — '), nameOf((LIVE.cache.branches || {})[o.branchId]) || o.branchName || '-', oCashier(o), custOrderType(o), custOrderAddress(o), fmtNum(productsAmount(o), 3, 3), moneyPlain(Number(o.deliveryFee || 0)), moneyPlain(Number(o.total || 0)), fmtDateTime(at)]),
       [[t('cu.productsAmount'), moneyPlain(tot.p)], [t('cu.deliveryAmount'), moneyPlain(tot.d)], [t('cu.totalSales'), moneyPlain(tot.t)]]);
   }
 
@@ -898,7 +985,7 @@ PAGES.customers = view => {
   function favRows() {
     const c = (LIVE.cache.customers || {})[st.detail] || {};
     return detailOrders(st.detail).filter(({ o }) => !oCancelled(o) && oItems(o).some(it => String(it.productId) === String(st.fav))).map(({ o, at }) => ({
-      num: o.orderNumber || '-', name: nameOf(c) || '-', zone: nameOf((LIVE.cache.deliveryZones || {})[o.deliveryZoneId]) || '-', phone: c.phone || o.customerPhone || '-', at,
+      num: o.orderNumber || '-', name: nameOf(c) || '-', zone: oZone(o), phone: c.phone || oPhone(o), at,
       cashier: oCashier(o), branch: nameOf((LIVE.cache.branches || {})[o.branchId]) || o.branchName || '-', type: custOrderType(o),
       net: Number(o.netTotal ?? o.subtotal ?? (Number(o.total || 0) - Number(o.deliveryFee || 0))), fee: Number(o.deliveryFee || 0), total: Number(o.total || 0),
       pay: oPay(o) }));
@@ -910,7 +997,7 @@ PAGES.customers = view => {
   }
   function drawFav() {
     const box = $('#cuFav', view); if (!box) return;
-    if (!LIVE.loaded(CU_PATHS)) { setHtml(box, `<section class="kpis">${skeletonKpis()}</section>`); return; }
+    if (!LIVE.complete(CU_PATHS)) { setHtml(box, `<section class="kpis">${skeletonKpis()}</section>`); return; }
     const c = (LIVE.cache.customers || {})[st.detail]; if (!c) { st.detail = null; st.fav = null; mount(); return; }
     const p = (LIVE.cache.products || {})[st.fav], rows = favRows();
     const tot = rows.reduce((a, r) => ({ n: a.n + r.net, d: a.d + r.fee, t: a.t + r.total }), { n: 0, d: 0, t: 0 });
@@ -936,7 +1023,7 @@ PAGES.customers = view => {
       [[t('o.net'), moneyPlain(tot.n)], [t('o.fee'), moneyPlain(tot.d)], [t('o.grand'), moneyPlain(tot.t)]]);
   }
 
-  function draw() { if (st.detail && st.fav) drawFav(); else if (st.detail) drawDetail(); else drawList(); }
+  function draw() { if (st.detail && st.fav) drawFav(); else if (st.detail) drawDetail(); else if (st.drill) drawDrill(); else drawList(); }
 
   /* ---------- list actions ---------- */
   function exportList() {
@@ -944,8 +1031,11 @@ PAGES.customers = view => {
     excelOut(sel.map(x => ({ [t('c.name')]: nameOf(x.c), [t('c.phone')]: x.c.phone || '', [t('o.zone')]: x.zone, [t('o.address')]: x.addr, [t('cu.lastOrder')]: x.last ? fmtDateTime(x.last) : '',
       [t('cu.orders')]: x.count, [t('cu.avgValue')]: +x.avg.toFixed(3), [t('cu.avgGap')]: x.gap === null ? '' : +x.gap.toFixed(1), [t('cu.level')]: t('cu.lv.' + (LEVEL_TONE[x.level] ? x.level : 'regular')), [t('cu.status')]: x.c.isBlocked ? t('cu.blocked') : t('cu.active') })), 'customers-report.xlsx');
   }
-  const zoneOpts = val => optsHtml(zoneItems(), val, t('cu.chooseZone'));
-  const phoneTaken = (phone, exceptId) => { const k = String(phone).replace(/\D/g, ''); return !!k && Object.entries(LIVE.cache.customers || {}).some(([id, c]) => id !== exceptId && c && String(c.phone || '').replace(/\D/g, '') === k); };
+  // Area choices = the cashier's list; an area already on the address but not in it stays selectable
+  const zoneOpts = val => optsHtml([...CASHIER_AREAS, ...(val && !CASHIER_AREAS.includes(val) ? [val] : [])].map(a => [a, a]), val, t('cu.chooseZone'));
+  const phoneTaken = (phone, exceptId) => { const k = phoneKey(phone); return !!k && Object.entries(LIVE.cache.customers || {}).some(([id, c]) => id !== exceptId && c && phoneKey(c.phone) === k); };
+  // Same phone format and phone index as the cashier (it finds customers by customerPhoneIndex/965XXXXXXXX)
+  const cashierPhone = v => { const k = phoneKey(v); return /^\d{8}$/.test(k) ? `965${k}` : ''; };
 
   function openNew() {
     const dr = freshDrawer(false);
@@ -969,12 +1059,13 @@ PAGES.customers = view => {
       const zoneId = $('#nZone', dr).value, details = $('#nDet', dr).value.trim();
       let bad = false;
       if (!name) { err('#nName', t('required')); bad = true; }
-      if (!phone) { err('#nPhone', t('required')); bad = true; } else if (phoneTaken(phone)) { err('#nPhone', t('cu.phoneTaken')); bad = true; }
+      if (!phone) { err('#nPhone', t('required')); bad = true; } else if (!cashierPhone(phone)) { err('#nPhone', t('cu.phoneBad')); bad = true; } else if (phoneTaken(phone)) { err('#nPhone', t('cu.phoneTaken')); bad = true; }
       if (bad) return;
-      const addr = !only && (zoneId || details) ? [{ id: `addr-${Date.now()}`, zoneId: zoneId || null, details: details || null }] : [];
+      const addr = !only && (zoneId || details) ? [{ area: zoneId || '', details: details || '' }] : [];
       const btn = $('#nSave', dr); saving = true; btn.classList.add('loading');
       try {
-        await LIVE.update({ [`customers/${LIVE.newKey('customers')}`]: clean({ nameAr: name, nameEn: name, phone, addresses: addr, zoneId: (addr[0] || {}).zoneId || null, address: (addr[0] || {}).details || null, createdAt: LIVE.now() }) });
+        const id = LIVE.newKey('customers'), ph = cashierPhone(phone);
+        await LIVE.update({ [`customers/${id}`]: clean({ id, name, phone: ph, addresses: addr, createdAt: LIVE.now() }), [`customerPhoneIndex/${ph}`]: id });
         toast(t('added')); closeLayers();
       } catch (ex) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
       finally { saving = false; btn.classList.remove('loading'); }
@@ -986,8 +1077,8 @@ PAGES.customers = view => {
   function openEdit(id) {
     const c = (LIVE.cache.customers || {})[id]; if (!c) return;
     const uid = () => `addr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const addrs = custAddresses(c).map(a => ({ id: a.id || uid(), zoneId: a.zoneId || '', details: a.details || '' }));
-    if (!addrs.length) addrs.push({ id: uid(), zoneId: '', details: '' });
+    const addrs = custAddresses(c).map(a => ({ id: uid(), area: custAreaOf(a), details: a.details || '' }));
+    if (!addrs.length) addrs.push({ id: uid(), area: '', details: '' });
     const dr = freshDrawer(false);
     dr.innerHTML = `
       <header class="dr-head"><span class="ph-ic sm">${icon('pencil')}</span><div><h2 id="drawerTitle">${t('cu.editTitle')}</h2><p>${esc(nameOf(c) || '-')}</p></div><button class="btn-icon" data-close aria-label="${t('close')}">${icon('x')}</button></header>
@@ -1000,25 +1091,29 @@ PAGES.customers = view => {
       <footer class="dr-foot"><button class="btn btn-ghost" data-close>${t('cancel')}</button><button class="btn btn-primary" id="uSave">${icon('check')}<span>${t('save')}</span></button></footer>`;
     openLayer('#drawer');
     const paint = () => { $('#uAddrs', dr).innerHTML = addrs.length ? addrs.map((a, i) => `<div class="addr-item" data-i="${i}"><span class="addr-n">${i + 1}</span>
-        <div class="select"><select data-f="zoneId" aria-label="${t('o.zone')}">${zoneOpts(a.zoneId)}</select>${icon('chevDown')}</div>
+        <div class="select"><select data-f="area" aria-label="${t('o.zone')}">${zoneOpts(a.area)}</select>${icon('chevDown')}</div>
         <input data-f="details" value="${esc(a.details)}" placeholder="${t('cu.addrDetails')}" autocomplete="off">
         <button type="button" class="chip-x" data-rm aria-label="${t('delete')}">${icon('x')}</button></div>`).join('') : `<p class="muted pc-hint">${icon('info')}${t('cu.noAddress')}</p>`; };
     paint();
     dr.oninput = e => { const f = e.target.dataset.f, it = e.target.closest('.addr-item'); if (f && it) addrs[+it.dataset.i][f] = e.target.value; const fl = e.target.closest('.field'); if (fl) { fl.classList.remove('invalid'); $('.err', fl).textContent = ''; } };
     dr.onclick = e => { const rm = e.target.closest('[data-rm]'); if (rm) { addrs.splice(+rm.closest('.addr-item').dataset.i, 1); paint(); } };
-    $('#uAdd', dr).addEventListener('click', () => { addrs.push({ id: uid(), zoneId: '', details: '' }); paint(); $$('.addr-item select', dr).at(-1).focus(); });
+    $('#uAdd', dr).addEventListener('click', () => { addrs.push({ id: uid(), area: '', details: '' }); paint(); $$('.addr-item select', dr).at(-1).focus(); });
     const err = (sel, msg) => { const f = $(sel, dr).closest('.field'); f.classList.toggle('invalid', !!msg); $('.err', f).textContent = msg || ''; };
     const save = async e => {
       e && e.preventDefault(); if (saving) return;
       const name = $('#uName', dr).value.trim(), phone = toLatin($('#uPhone', dr).value.trim());
       let bad = false;
       if (!name) { err('#uName', t('required')); bad = true; }
-      if (!phone) { err('#uPhone', t('required')); bad = true; } else if (phoneTaken(phone, id)) { err('#uPhone', t('cu.phoneTaken')); bad = true; }
+      if (!phone) { err('#uPhone', t('required')); bad = true; } else if (!cashierPhone(phone)) { err('#uPhone', t('cu.phoneBad')); bad = true; } else if (phoneTaken(phone, id)) { err('#uPhone', t('cu.phoneTaken')); bad = true; }
       if (bad) return;
-      const list = addrs.map(a => ({ id: a.id, zoneId: a.zoneId || null, details: String(a.details || '').trim() || null })).filter(a => a.zoneId || a.details);
+      const list = addrs.map(a => ({ area: a.area || '', details: String(a.details || '').trim() })).filter(a => a.area || a.details);
       const btn = $('#uSave', dr); saving = true; btn.classList.add('loading');
       try {
-        await LIVE.update({ [`customers/${id}/nameAr`]: name, [`customers/${id}/nameEn`]: name, [`customers/${id}/phone`]: phone, [`customers/${id}/addresses`]: list.length ? clean(list) : null, [`customers/${id}/zoneId`]: (list[0] || {}).zoneId || null, [`customers/${id}/address`]: (list[0] || {}).details || null });
+        const ph = cashierPhone(phone), was = cashierPhone(c.phone);
+        const up = { [`customers/${id}/name`]: name, [`customers/${id}/nameAr`]: null, [`customers/${id}/nameEn`]: null, [`customers/${id}/phone`]: ph,
+          [`customers/${id}/addresses`]: list.length ? list : null, [`customers/${id}/zoneId`]: null, [`customers/${id}/address`]: null, [`customers/${id}/updatedAt`]: LIVE.now(), [`customerPhoneIndex/${ph}`]: id };
+        if (was && was !== ph) up[`customerPhoneIndex/${was}`] = null;
+        await LIVE.update(up);
         toast(t('saved')); closeLayers();
       } catch (ex) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
       finally { saving = false; btn.classList.remove('loading'); }
@@ -1057,7 +1152,8 @@ PAGES.customers = view => {
     const n = (allStats()[id] || {}).count || 0;
     const ok = await confirmDialog({ title: t('cu.deleteQ'), body: `<div class="cf-sum"><div><small>${t('c.name')}</small><b>${esc(nameOf(c))}</b></div><div><small>${t('cu.orders')}</small><b>${n}</b></div></div><p class="cf-note">${t('cu.deleteNote')}</p>`, ok: t('delete'), tone: 'danger', icon: 'trash' });
     if (!ok) return;
-    try { await LIVE.update({ [`customers/${id}`]: null }); st.sel.delete(id); toast(t('deleted'), { tone: 'danger' }); } catch (e) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
+    const ph = cashierPhone(c.phone);
+    try { await LIVE.update({ [`customers/${id}`]: null, ...(ph ? { [`customerPhoneIndex/${ph}`]: null } : {}) }); st.sel.delete(id); toast(t('deleted'), { tone: 'danger' }); } catch (e) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
   }
 
   /* ---------- Excel import (old template: name, phone, address «zone - details») ---------- */
@@ -1065,17 +1161,17 @@ PAGES.customers = view => {
   const zoneKey = v => normQ(String(v || '').replace(/^منطقة\s+/u, '').replace(/^محافظة\s+/u, '').replace(/\s+/g, ' '));
   function zoneMatch(token) {
     const k = zoneKey(token); if (!k) return null;
-    const list = Object.entries(LIVE.cache.deliveryZones || {}).map(([id, z]) => ({ id, keys: [z && z.nameAr, z && z.nameEn, z && z.name].map(zoneKey).filter(Boolean) }));
+    // Match against the cashier's area names (what addresses store)
+    const list = CASHIER_AREAS.map(a => ({ area: a, keys: [zoneKey(a)] }));
     return list.find(e => e.keys.includes(k)) || list.find(e => e.keys.some(x => x.includes(k) || k.includes(x))) || null;
   }
   function prepareImport(rows) {
-    const phoneKey = v => String(v || '').replace(/\D/g, '') || normQ(v);
     const existing = new Set(Object.values(LIVE.cache.customers || {}).map(c => phoneKey(c && c.phone)).filter(Boolean));
     const inFile = new Set(), out = { rows: [], dup: 0, existing: 0, invalid: 0, noZone: 0 };
     rows.forEach((raw, i) => {
       const r = mapImportRow(raw, IMPORT_COLS);
-      const name = String(r.name || '').trim(), phone = toLatin(String(r.phone || '').trim()), addr = String(r.address || '').trim(), k = phoneKey(phone);
-      if (!name || !k || !addr) { out.invalid++; return; }
+      const name = String(r.name || '').trim(), phone = cashierPhone(String(r.phone || '').trim()), addr = String(r.address || '').trim(), k = phoneKey(phone);
+      if (!name || !phone || !addr) { out.invalid++; return; }
       if (inFile.has(k)) { out.dup++; return; }
       if (existing.has(k)) { out.existing++; return; }
       const parts = addr.replace(/\r?\n+/g, ' ').split(/\s*[-/\\|،]+\s*/u).map(s => s.trim()).filter(Boolean);
@@ -1083,7 +1179,7 @@ PAGES.customers = view => {
       if (!z) { out.noZone++; return; }
       inFile.add(k);
       const details = parts.join(' - ').trim() || null;
-      out.rows.push({ nameAr: name, nameEn: name, phone, addresses: [{ id: `addr-import-${Date.now()}-${i}`, zoneId: z.id, details }], zoneId: z.id, address: details });
+      out.rows.push({ name, phone, addresses: [{ area: z.area, details: details || '' }] });
     });
     return out;
   }
@@ -1135,7 +1231,9 @@ PAGES.customers = view => {
       const s = st.imp; if (!s || !s.rows.length || saving) return;
       const btn = $('#impGo', dr); saving = true; btn.classList.add('loading');
       try {
-        await LIVE.update(Object.fromEntries(s.rows.map(r => [`customers/${LIVE.newKey('customers')}`, clean({ ...r, createdAt: LIVE.now() })])));
+        const up = {};
+        s.rows.forEach(r => { const id = LIVE.newKey('customers'); up[`customers/${id}`] = clean({ id, ...r, createdAt: LIVE.now() }); up[`customerPhoneIndex/${r.phone}`] = id; });
+        await LIVE.update(up);
         st.imp = { rows: [], msg: t('imp.done').replace('{n}', s.rows.length), tone: 'success' };
         toast(st.imp.msg);
       } catch (e) { st.imp = { ...s, msg: t('pm.saveFailed'), tone: 'danger' }; }
@@ -1143,12 +1241,116 @@ PAGES.customers = view => {
     });
   }
 
+  /* ---------- what's behind each summary card ---------- */
+  // A customer opened from a card's page; «back» from the customer returns to that page
+  const openCust = id => { st.detail = id; st.fav = null; mount(); scrollTo({ top: 0, behavior: 'smooth' }); };
+  const drillBack = () => { st.drill = null; mount(); scrollTo({ top: 0, behavior: 'smooth' }); };
+  function drawDrill() {
+    const box = $('#cuDrill', view); if (!box) return;
+    if (!LIVE.complete(CU_PATHS)) { if (!box._kd) box.innerHTML = `<section class="kpis">${skeletonKpis()}</section>`; return; }
+    const cfg = drill(st.drill); if (!cfg) { st.drill = null; mount(); return; }
+    if (!box._kd) box.innerHTML = '';
+    kpiPage(box, { ...cfg, onRow: openCust, onBack: drillBack });
+  }
+  const custCell = c => `<span class="person"><span class="av" style="--h:${hue(c.phone || '')}">${esc((nameOf(c) || '?').trim()[0] || '?')}</span><b>${esc(nameOf(c) || '-')}</b></span>`;
+  const lvBadge = lv => `<span class="badge tone-${LEVEL_TONE[lv] || 'neutral'}">${t('cu.lv.' + (LEVEL_TONE[lv] ? lv : 'regular'))}</span>`;
+  function drill(kind) {
+    const custs = Object.entries(LIVE.cache.customers || {}).filter(([, c]) => c && typeof c === 'object');
+    const life = lifeStats(), win = allStats(), r = levelRules(), H = { name: t('c.name'), phone: t('c.phone'), area: t('o.zone') };
+    if (kind === 'ordering') {
+      const list = custs.filter(([id]) => life[id]).map(([id, c]) => ({ id, c, s: life[id] })).sort((a, b) => b.s.total - a.s.total);
+      const tot = list.reduce((a, x) => ({ n: a.n + x.s.count, v: a.v + x.s.total }), { n: 0, v: 0 });
+      return ({ title: t('cu.kOrdering'), sub: t('cu.dOrderingSub'), ic: 'receipt', file: 'customers-with-orders.xlsx', onRow: openCust,
+        chips: [[t('cu.kOrdering'), fmtNum(list.length)], [t('cu.orders'), fmtNum(tot.n)], [t('cu.totalSales'), fmtMoney(tot.v)], [t('cu.avgValue'), fmtMoney(tot.n ? tot.v / tot.n : 0)]],
+        cols: [{ h: '#' }, { h: H.name }, { h: H.phone }, { h: H.area }, { h: t('cu.orders'), end: 1 }, { h: t('cu.totalSales'), end: 1 }, { h: t('cu.avgValue'), end: 1 }, { h: t('cu.lastOrder') }],
+        rows: list.map((x, i) => ({ id: x.id, text: `${nameOf(x.c)} ${x.c.phone || ''} ${custAreas(x.c).join(' ')}`,
+          cells: [`<span class="muted">${i + 1}</span>`, custCell(x.c), `<span class="mono">${esc(x.c.phone || '-')}</span>`, esc(custAreas(x.c)[0] || '-'), fmtNum(x.s.count), fmtMoney(x.s.total), fmtMoney(x.s.total / x.s.count), `<span class="date">${fmtDateTime(x.s.last)}</span>`],
+          x: { [H.name]: nameOf(x.c), [H.phone]: x.c.phone || '', [H.area]: custAreas(x.c)[0] || '', [t('cu.orders')]: x.s.count, [t('cu.totalSales')]: +x.s.total.toFixed(3), [t('cu.avgValue')]: +(x.s.total / x.s.count).toFixed(3), [t('cu.lastOrder')]: fmtDateTime(x.s.last) } })) });
+    }
+    if (kind === 'vip') {
+      const rank = { vvip: 0, vip: 1 }, now = Date.now();
+      const list = custs.map(([id, c]) => ({ id, c, s: win[id] || { total: 0, count: 0, last: null }, lv: levelOf(id, c, r) })).filter(x => x.lv !== 'regular')
+        .sort((a, b) => (rank[a.lv] - rank[b.lv]) || (b.s.total - a.s.total));
+      const n = lv => list.filter(x => x.lv === lv).length, per = r.days > 0 ? t('cu.dLastDays').replace('{n}', r.days) : t('cu.dAllTime');
+      const ago = x => (x.s.last ? Math.floor((now - x.s.last) / 86400000) : null);
+      return ({ title: t('cu.kVip'), sub: `${t('cu.dVipSub')} · ${per}`, ic: 'star', file: 'customers-vip.xlsx', onRow: openCust,
+        chips: [['VVIP', fmtNum(n('vvip')), 'accent'], ['VIP', fmtNum(n('vip')), 'info'], [`${t('cu.totalSales')} (${per})`, fmtMoney(list.reduce((a, x) => a + x.s.total, 0))]],
+        cols: [{ h: H.name }, { h: H.phone }, { h: t('cu.level') }, { h: `${t('cu.orders')} <small class="muted">(${esc(per)})</small>`, end: 1 }, { h: `${t('cu.totalSales')} <small class="muted">(${esc(per)})</small>`, end: 1 }, { h: t('cu.lastOrder') }],
+        rows: list.map(x => ({ id: x.id, text: `${nameOf(x.c)} ${x.c.phone || ''} ${x.lv}`,
+          cells: [custCell(x.c), `<span class="mono">${esc(x.c.phone || '-')}</span>`, lvBadge(x.lv) + (x.c.level ? ` <small class="muted" title="${t('cu.lvManual')}">✎</small>` : ''), fmtNum(x.s.count), fmtMoney(x.s.total),
+            x.s.last ? `<span class="cell-2"><span class="date">${fmtDateTime(x.s.last)}</span><small class="muted">${ago(x) === 0 ? t('cu.dToday') : t('cu.dAgo').replace('{n}', ago(x))}</small></span>` : '—'],
+          x: { [H.name]: nameOf(x.c), [H.phone]: x.c.phone || '', [t('cu.level')]: x.lv.toUpperCase(), [t('cu.orders')]: x.s.count, [t('cu.totalSales')]: +x.s.total.toFixed(3), [t('cu.lastOrder')]: x.s.last ? fmtDateTime(x.s.last) : '' } })) });
+    }
+    if (kind === 'blocked') {
+      const list = custs.filter(([, c]) => c.isBlocked).map(([id, c]) => ({ id, c, s: life[id] || { total: 0, count: 0, last: null } }));
+      return ({ title: t('cu.kBlocked'), sub: t('cu.dBlockedSub'), ic: 'shield', file: 'customers-blocked.xlsx', onRow: openCust, empty: t('cu.dNoBlocked'),
+        chips: [[t('cu.kBlocked'), fmtNum(list.length), 'danger']],
+        cols: [{ h: H.name }, { h: H.phone }, { h: t('cu.reason') }, { h: t('cu.orders'), end: 1 }, { h: t('cu.lastOrder') }],
+        rows: list.map(x => ({ id: x.id, text: `${nameOf(x.c)} ${x.c.phone || ''} ${x.c.blockReason || ''}`,
+          cells: [custCell(x.c), `<span class="mono">${esc(x.c.phone || '-')}</span>`, x.c.blockReason ? esc(x.c.blockReason) : '<span class="muted">—</span>', fmtNum(x.s.count), x.s.last ? `<span class="date">${fmtDateTime(x.s.last)}</span>` : '—'],
+          x: { [H.name]: nameOf(x.c), [H.phone]: x.c.phone || '', [t('cu.reason')]: x.c.blockReason || '', [t('cu.orders')]: x.s.count, [t('cu.lastOrder')]: x.s.last ? fmtDateTime(x.s.last) : '' } })) });
+    }
+  }
+
+  /* ---------- level settings ---------- */
+  function openLevels() {
+    const r = levelRules(), dr = freshDrawer(false);
+    const num = (id, v, step, suf) => `<div class="lv-in"><input id="${id}" type="number" min="0" step="${step}" value="${v}" dir="ltr" inputmode="decimal"><span>${suf}</span></div>`;
+    const kd = t('cu.kd'), dd = t('cu.days'), ow = t('o.ordersWord');
+    const box = (p, tone, label) => `<fieldset class="lv-box lv-3 tone-${tone}"><legend><span class="badge tone-${tone}">${label}</span></legend>
+          <div class="field"><label for="lv_${p}Orders">${t('cu.lvOrders')}</label>${num(`lv_${p}Orders`, r[p + 'Orders'], '1', ow)}</div>
+          <div class="field"><label for="lv_${p}Spend">${t('cu.lvSpend')}</label>${num(`lv_${p}Spend`, r[p + 'Spend'], '1', kd)}</div>
+          <div class="field"><label for="lv_${p}Recent">${t('cu.lvRecent')}</label>${num(`lv_${p}Recent`, r[p + 'Recent'], '1', dd)}</div></fieldset>`;
+    dr.innerHTML = `
+      <header class="dr-head"><span class="ph-ic sm">${icon('sliders')}</span><div><h2 id="drawerTitle">${t('cu.levelSettings')}</h2><p>${t('cu.lvSub')}</p></div><button class="btn-icon" data-close aria-label="${t('close')}">${icon('x')}</button></header>
+      <form class="dr-body it-form" id="lvForm" novalidate>
+        <div class="lv-how">${icon('info')}<div><b>${t('cu.lvHow')}</b><ul>
+          <li>${t('cu.lvHow1')}</li><li>${t('cu.lvHow2')}</li><li>${t('cu.lvHow3')}</li><li>${t('cu.lvHow4')}</li></ul></div></div>
+        <fieldset class="lv-box"><legend>${t('cu.lvGeneral')}</legend>
+          <div class="field"><label for="lvDays">${t('cu.lvDays')}</label>${num('lvDays', r.days, '1', dd)}<small class="lv-hint">${t('cu.lvDaysHint')}</small></div></fieldset>
+        ${box('vvip', 'accent', 'VVIP')}
+        ${box('vip', 'info', 'VIP')}
+        <div class="lv-preview" id="lvPrev"></div>
+        <small class="err" id="lvErr"></small>
+      </form>
+      <footer class="dr-foot"><button class="btn btn-ghost" type="button" id="lvReset">${icon('refresh')}<span>${t('cu.lvReset')}</span></button><span class="tb-spacer"></span><button class="btn btn-ghost" data-close>${t('cancel')}</button><button class="btn btn-primary" id="lvSave">${icon('check')}<span>${t('save')}</span></button></footer>`;
+    openLayer('#drawer');
+    const F = { days: '#lvDays', ...Object.fromEntries(['vvip', 'vip'].flatMap(p => ['Orders', 'Spend', 'Recent'].map(f => [p + f, `#lv_${p}${f}`]))) };
+    const read = () => Object.fromEntries(Object.entries(F).map(([k, sel]) => [k, Number(toLatin($(sel, dr).value))]));
+    // Live preview: how many customers each level would hold with these numbers
+    const preview = () => {
+      const v = read(), bad = Object.values(v).some(x => !Number.isFinite(x) || x < 0);
+      $('#lvErr', dr).textContent = bad ? t('cu.lvBad') : '';
+      if (bad || !LIVE.complete(['orders', 'customers'])) { $('#lvPrev', dr).innerHTML = ''; return; }
+      const since = v.days > 0 ? Date.now() - v.days * 86400000 : 0;
+      const stats = custStats(Object.values(LIVE.cache.orders || {}).filter(o => o && !oCancelled(o) && oTime(o) >= since));
+      const n = { regular: 0, vip: 0, vvip: 0 };
+      Object.entries(LIVE.cache.customers || {}).forEach(([id, c]) => { if (c && typeof c === 'object') n[c.level && n[c.level] !== undefined ? c.level : custLevel(stats[id], v)]++; });
+      $('#lvPrev', dr).innerHTML = `<b>${t('cu.lvPreview')}</b><div class="lv-counts"><span class="badge tone-accent">VVIP <em>${n.vvip}</em></span><span class="badge tone-info">VIP <em>${n.vip}</em></span><span class="badge tone-neutral">${t('cu.lv.regular')} <em>${n.regular}</em></span></div>`;
+    };
+    let deb; dr.addEventListener('input', () => { clearTimeout(deb); deb = setTimeout(preview, 200); });
+    preview();
+    $('#lvReset', dr).addEventListener('click', () => { Object.entries(F).forEach(([k, sel]) => { $(sel, dr).value = LEVEL_DEFAULTS[k]; }); preview(); });
+    const save = async e => {
+      e && e.preventDefault(); if (saving) return;
+      const v = read();
+      if (Object.values(v).some(x => !Number.isFinite(x) || x < 0)) { $('#lvErr', dr).textContent = t('cu.lvBad'); return; }
+      const btn = $('#lvSave', dr); saving = true; btn.classList.add('loading');
+      try { await LIVE.update(Object.fromEntries([...Object.entries(v).map(([k, x]) => [`customerLevelSettings/${k}`, x]), ['customerLevelSettings/updatedAt', LIVE.now()]])); toast(t('saved')); closeLayers(); }
+      catch (ex) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
+      finally { saving = false; btn.classList.remove('loading'); }
+    };
+    $('#lvForm', dr).addEventListener('submit', save); $('#lvSave', dr).addEventListener('click', save);
+  }
+
   /* ---------- events ---------- */
   view.addEventListener('click', e => {
     const pg = e.target.closest('[data-page]'); if (pg && !pg.disabled) { st.page = +pg.dataset.page; draw(); return; }
+    const k = e.target.closest('.kpi-link[data-drill]'); if (k) { if (!LIVE.complete(CU_PATHS)) return; st.drill = k.dataset.drill; mount(); scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const b = e.target.closest('[data-cu]'); if (!b || b.disabled) return;
     const a = b.dataset.cu;
     if (a === 'new') return openNew();
+    if (a === 'levels') return openLevels();
     if (a === 'import') return openImport();
     if (a === 'export') return allLoaded() && exportList();
     if (a === 'back') { if (st.fav) st.fav = null; else st.detail = null; mount(); scrollTo({ top: 0, behavior: 'smooth' }); return; }

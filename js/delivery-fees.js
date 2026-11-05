@@ -16,15 +16,7 @@ PAGES['delivery-fees'] = view => {
   const PATHS = ['deliveryPrices', 'deliveryZones', 'orders', 'branches'];
   const GROUPS = ['mainYarmouk', 'abuHasaniya'];
   const LABEL = { mainYarmouk: 'الفرع الرئيسي واليرموك', abuHasaniya: 'فرع أبو الحصانية' };
-  const AREAS = ['السرة', 'الزهراء', 'السلام', 'حطين', 'الفيحاء', 'القادسية', 'مشرف', 'كيفان', 'الروضة', 'العديلية',
-    'الخالدية', 'النزهة', 'الدعية', 'المنصورية', 'قرطبة', 'الشامية', 'الرميثية', 'عبدالله السالم', 'الجابرية',
-    'بيان', 'الصديق', 'الشهداء', 'اليرموك', 'الفروانية', 'خيطان', 'بنيد القار', 'الدسمة', 'حولي', 'ميدان حولي',
-    'مبارك الكبير', 'القصور', 'الرابية', 'العمرية', 'الرقعي', 'غرناطة', 'القرين', 'الشويخ', 'المسيلة', 'الكويت',
-    'اشبيليا', 'السالمية', 'شرق', 'الرحاب', 'المرقاب', 'صباح السالم', 'الفردوس', 'صباح الناصر', 'المسايل',
-    'الاندلس', 'العارضية', 'سلوى', 'العدان', 'الشعب', 'هدية', 'الصليبيخات', 'الجهراء', 'الفنطاس', 'سعد العبدالله',
-    'الفنيطيس', 'الدوحة', 'العقيلة', 'جابر العلي', 'جابر الاحمد', 'عبدالله مبارك', 'المهبولة', 'المنقف', 'الاحمدي',
-    'الصليبية', 'الصباحية', 'فهد الاحمد', 'صبحان', 'ابو فطيرة', 'ابو الحصانية', 'الظهر', 'ابو حليفة', 'الفحيحيل',
-    'جليب الشيوخ', 'ام الهيمان', 'المطلاع', 'صباح الاحمد', 'الوفرة'];
+  const AREAS = CASHIER_AREAS;
   const ABU = normQ('أبو الحصانية');
   const edits = new Map(); // area -> typed text (this group only)
   let first = true, saving = false;
@@ -93,8 +85,8 @@ PAGES['delivery-fees'] = view => {
     const list = rows(), known = list.filter(r => r.value !== null).length;
     setKpis($('#dpK', view), [
       kpiCard({ label: t('dp.kAreas'), value: list.length, ic: 'pin', tone: 'c1' }),
-      kpiCard({ label: t('dp.kKnown'), value: known, ic: 'check', tone: 'c2' }),
-      kpiCard({ label: t('dp.kMissing'), value: list.length - known, ic: 'alert', tone: 'c4' })
+      kpiCard({ label: t('dp.kKnown'), value: known, ic: 'check', tone: 'c2', drill: 'known' }),
+      kpiCard({ label: t('dp.kMissing'), value: list.length - known, ic: 'alert', tone: 'c4', drill: 'missing' })
     ].join(''), first);
     // Keep what is being typed: rebuild the rows only while nothing is edited
     if (edits.size && !first && $$('tr[data-area]', body).length) { marks(); return; }
@@ -182,7 +174,22 @@ PAGES['delivery-fees'] = view => {
     const g = e.target.closest('[data-group]'); if (g) return switchGroup(g.dataset.group);
     if (e.target.closest('[data-dp="save"]')) save();
   });
+  // Card pages: areas with a price / without one; a row jumps to that area's price box
+  const closeDrill = kpiDrills(view, { paths: PATHS, ready: () => LIVE.loaded(PATHS), build: kind => {
+    if (kind !== 'known' && kind !== 'missing') return null;
+    const all = rows(), list = all.filter(r => (kind === 'known') === (r.value !== null));
+    const src = r => `<span class="badge tone-${{ saved: 'success', invoices: 'info', unknown: 'neutral' }[r.source]}"><i></i>${t('dp.s_' + r.source)}</span>`;
+    const vals = list.map(r => r.value).filter(v => v !== null);
+    return { title: t(kind === 'known' ? 'dp.kKnown' : 'dp.kMissing'), sub: `${esc(LABEL[st.group] || '')} · ${t('kd.dpSub')}`, ic: kind === 'known' ? 'check' : 'alert', file: `delivery-${kind}-${st.group}.xlsx`,
+      onRow: area => { closeDrill(); st.q = ''; const q = view.querySelector('input[type=search]'); if (q) q.value = ''; draw(); requestAnimationFrame(() => { const tr = [...view.querySelectorAll('tr[data-area]')].find(x => x.dataset.area === area); if (tr) { tr.scrollIntoView({ block: 'center', behavior: 'smooth' }); const i = tr.querySelector('input'); if (i) i.focus({ preventScroll: true }); } }); },
+      chips: kind === 'known' ? [[t('kd.area'), fmtNum(list.length)], [t('kd.minPrice'), vals.length ? fmtMoney(Math.min(...vals)) : '—'], [t('kd.maxPrice'), vals.length ? fmtMoney(Math.max(...vals)) : '—'], [t('dp.s_saved'), fmtNum(list.filter(r => r.source === 'saved').length), 'success'], [t('dp.s_invoices'), fmtNum(list.filter(r => r.source === 'invoices').length), 'info']]
+        : [[t('kd.area'), fmtNum(list.length), 'danger'], [t('dp.kAreas'), fmtNum(all.length)]],
+      cols: kind === 'known' ? [{ h: t('dp.area') }, { h: t('dp.price'), end: 1 }, { h: t('dp.source') }] : [{ h: '#' }, { h: t('dp.area') }, { h: t('dp.source') }],
+      rows: list.map((r, i) => ({ id: r.area, text: r.area,
+        cells: kind === 'known' ? [`<b>${esc(r.area)}</b>`, fmtMoney(r.value), src(r)] : [`<span class="muted">${i + 1}</span>`, `<b>${esc(r.area)}</b>`, src(r)],
+        x: { [t('dp.area')]: r.area, ...(kind === 'known' ? { [t('dp.price')]: r.value } : {}), [t('dp.source')]: t('dp.s_' + r.source) } })) };
+  } });
   const unsub = LIVE.watch(PATHS, draw);
   draw();
-  return () => unsub();
+  return () => { unsub(); closeDrill(); };
 };

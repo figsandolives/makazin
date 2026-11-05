@@ -222,8 +222,11 @@ function pageHeader(route, actions = '', sub = '') {
   </header>`;
 }
 
-function kpiCard({ label, value, kind = 'num', ic = 'chart', delta, spark, tone = 'c1' }) {
-  return `<article class="kpi card" data-anim>
+/* drill: a key the page handles — the card becomes a button that opens what's behind the number
+   (cards that only repeat the list already on the page get no drill). */
+function kpiCard({ label, value, kind = 'num', ic = 'chart', delta, spark, tone = 'c1', drill }) {
+  return `<article class="kpi card${drill ? ' kpi-link' : ''}" data-anim${drill ? ` data-drill="${esc(drill)}" role="button" tabindex="0" aria-label="${esc(label)} — ${esc(t('kd.open'))}"` : ''}>
+    ${drill ? `<span class="kpi-go" aria-hidden="true">${icon('chevLeft')}</span>` : ''}
     <div class="kpi-top"><span class="kpi-ic ${tone}">${icon(ic)}</span>
       ${delta != null ? `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${icon(delta >= 0 ? 'up' : 'down')}${Math.abs(delta).toFixed(1)}%</span>` : ''}</div>
     <p class="kpi-label">${label}</p>
@@ -276,7 +279,7 @@ function setKpis(el, html, first) {
   const fresh = document.createElement('div');
   fresh.innerHTML = html;
   const next = $$('.kpi', fresh), cur = $$('.kpi', el);
-  if (first || next.length !== cur.length || cur.some(k => !$('[data-count]', k))) {
+  if (first || next.length !== cur.length || cur.some((k, i) => !$('[data-count]', k) || (k.dataset.drill || '') !== (next[i].dataset.drill || ''))) {
     el.innerHTML = html;
     if (first) { stagger(el); countUp(el); }
     else { $$('[data-anim]', el).forEach(k => k.removeAttribute('data-anim')); paintCounts(el); }
@@ -1012,3 +1015,131 @@ function startApp() {
 delete NAV_BADGE['pending-movements'];
 LIVE.restore().then(user => (user ? enterApp() : showLogin()));
 requestAnimationFrame(() => html.classList.add('ready'));
+
+
+/* Enter / Space on a clickable card acts like a click */
+document.addEventListener('keydown', e => {
+  const k = (e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.kpi-link');
+  if (k) { e.preventDefault(); k.click(); }
+});
+
+/* Shared «what's behind this card» full page (inside the current page, with a back button).
+   The page keeps a state flag (e.g. st.drill) and calls kpiPage(box, cfg) from its draw(), so live
+   updates refresh it; search text and «show more» survive those redraws.
+   cfg: { title, sub, ic, chips: [[label, value, tone]], cols: [{ h, end }], rows: [{ id, cells, text, x }],
+          onRow(id), onBack(), file (Excel name), empty } */
+function kpiPage(box, cfg) {
+  const PAGE = 100;
+  if (!box._kd) {
+    box._kd = { q: '', shown: PAGE };
+    box.innerHTML = `
+      <div class="back-bar"><button class="btn btn-ghost btn-sm" data-kd="back">${icon('chevLeft', 'flip')}<span>${t('kd.back')}</span></button></div>
+      <header class="ph kd-head" data-anim><div class="ph-ic" data-kd-ic></div><div class="ph-txt"><h1 data-kd-title></h1><p data-kd-sub></p></div>
+        <div class="ph-actions"><button class="btn btn-primary" data-kd="export">${icon('download')}<span>${t('o.download')}</span></button></div></header>
+      <section class="kd-chips" data-kd-chips data-anim></section>
+      <section class="card table-card" data-anim>
+        <div class="toolbar it-tools"><label class="search-field">${icon('search')}<input type="search" data-kd-q placeholder="${t('kd.search')}" autocomplete="off"></label><span class="tb-spacer"></span><span class="kd-n" data-kd-n></span></div>
+        <div class="table-wrap"><table class="dt it-table kd-table"><thead data-kd-th></thead><tbody data-kd-b></tbody></table></div>
+        <footer class="kd-more" data-kd-more></footer>
+      </section>`;
+    stagger(box);
+    let deb;
+    $('[data-kd-q]', box).addEventListener('input', e => { clearTimeout(deb); deb = setTimeout(() => { box._kd.q = e.target.value.trim(); box._kd.shown = PAGE; paint(); }, 150); });
+    box.addEventListener('click', e => {
+      const c = box._kd.cfg;
+      const a = e.target.closest('[data-kd]');
+      if (a && a.dataset.kd === 'back') { c.onBack && c.onBack(); return; }
+      if (a && a.dataset.kd === 'export') { excelOut(list().map(r => r.x), c.file || 'report.xlsx'); return; }
+      if (a && a.dataset.kd === 'more') { box._kd.shown += PAGE; paint(); return; }
+      const row = !e.target.closest('a, button, input') && e.target.closest('.kd-row');
+      if (row && c.onRow) c.onRow(row.dataset.kid);
+    });
+    box.addEventListener('keydown', e => { const row = e.key === 'Enter' && e.target.closest('.kd-row'); if (row && box._kd.cfg.onRow) box._kd.cfg.onRow(row.dataset.kid); });
+    scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  box._kd.cfg = cfg;
+  const list = () => { const c = box._kd.cfg, k = normQ(box._kd.q); return k ? c.rows.filter(r => normQ(r.text || '').includes(k)) : c.rows; };
+  function paint() {
+    const c = box._kd.cfg, l = list(), shown = box._kd.shown;
+    $('[data-kd-ic]', box).innerHTML = icon(c.ic || 'chart');
+    $('[data-kd-title]', box).textContent = c.title;
+    setHtml($('[data-kd-sub]', box), c.sub || '');
+    setHtml($('[data-kd-chips]', box), (c.chips || []).map(([lb, v, tone]) => `<div class="kd-chip card${tone ? ' tone-' + tone : ''}"><small>${esc(lb)}</small><b>${v}</b></div>`).join(''));
+    $('[data-kd-chips]', box).hidden = !(c.chips || []).length;
+    $('[data-kd="export"]', box).hidden = !c.file;
+    setHtml($('[data-kd-th]', box), `<tr>${c.cols.map(h => `<th class="${h.end ? 'end' : ''}">${h.h}</th>`).join('')}</tr>`);
+    $('[data-kd-n]', box).textContent = `${fmtNum(l.length)} ${t('kd.rows')}`;
+    setHtml($('[data-kd-b]', box), l.length ? l.slice(0, shown).map(r => `<tr${c.onRow && r.id != null ? ` class="kd-row" data-kid="${esc(r.id)}" tabindex="0"` : ''}>${r.cells.map((x, i) => `<td data-label="${esc(String(c.cols[i].h).replace(/<[^>]+>/g, ''))}" class="${c.cols[i].end ? 'end num' : ''}">${x}</td>`).join('')}</tr>`).join('')
+      : `<tr class="empty"><td colspan="${c.cols.length}"><div class="empty-state">${icon(box._kd.q ? 'search' : (c.ic || 'chart'))}<b>${box._kd.q ? t('emptyTitle') : (c.empty || t('kd.none'))}</b></div></td></tr>`);
+    setHtml($('[data-kd-more]', box), l.length > shown ? `<button class="btn btn-soft btn-sm" data-kd="more">${t('kd.more').replace('{n}', fmtNum(Math.min(PAGE, l.length - shown)))}</button>` : '');
+  }
+  paint();
+}
+
+/* Card pages for any page: a click on a `.kpi-link` hides the page's own content and shows the
+   card's full page in its place; «رجوع» brings the page back exactly as it was.
+   build(kind) → kpiPage cfg (or null to close); paths = what it reads (refreshes it live).
+   Returns close() — call it from the page's cleanup. */
+function kpiDrills(view, { paths, build, ready }) {
+  let kind = null, label = '', host = null, unsub = null;
+  const ok = () => (ready ? ready() : LIVE.complete(paths));
+  function refresh() {
+    if (!kind) return;
+    if (!host || !host.isConnected) { close(); return; }
+    if (!ok()) { if (!host._kd) host.innerHTML = `<section class="kpis">${skeletonKpis()}</section>`; return; }
+    const cfg = build(kind, label);
+    if (!cfg) { close(); return; }
+    if (!host._kd) host.innerHTML = '';
+    kpiPage(host, { ...cfg, title: cfg.title || label, onBack: close });
+  }
+  function open(k, lab) {
+    close();
+    kind = k; label = lab || ''; host = document.createElement('div'); host.className = 'kd-host';
+    view.appendChild(host); view.classList.add('kd-on');
+    refresh();
+    unsub = LIVE.watch(paths, refresh);
+    scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function close() {
+    const was = !!kind;
+    kind = null; if (unsub) unsub(); unsub = null;
+    if (host) host.remove(); host = null;
+    view.classList.remove('kd-on');
+    if (was) scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  view.addEventListener('click', e => {
+    const k = e.target.closest('.kpi-link[data-drill]');
+    if (!k || (host && host.contains(k))) return;
+    const lb = k.querySelector('.kpi-label');
+    e.stopPropagation(); open(k.dataset.drill, lb ? lb.textContent.trim() : '');
+  }, true);
+  close.refresh = refresh; // for data that doesn't come through LIVE (e.g. online orders)
+  return close;
+}
+
+/* A «breakdown» card page: totals grouped by something (branch, area, payment method…).
+   items: [{ key, label, n, v }] — n = how many records, v = amount (money unless kind = 'num'). */
+function kdBreakdown({ title, sub, ic, file, groupH, countH, valueH, items, kind = 'money', chips = [] }) {
+  const fmt = v => (kind === 'money' ? fmtMoney(v) : fmtNum(v, 3));
+  const raw = v => +Number(v || 0).toFixed(3);
+  const list = items.filter(x => x.n || x.v).sort((a, b) => b.v - a.v || b.n - a.n);
+  const total = list.reduce((s, x) => s + x.v, 0), count = list.reduce((s, x) => s + x.n, 0);
+  return {
+    title, sub, ic, file,
+    chips: [[valueH, fmt(total)], [countH, fmtNum(count)], [groupH, fmtNum(list.length)], ...chips],
+    cols: [{ h: '#' }, { h: groupH }, { h: countH, end: 1 }, { h: valueH, end: 1 }, { h: t('kd.share') }],
+    rows: list.map((x, i) => {
+      const pct = total ? (x.v / total) * 100 : 0;
+      return { id: x.key, text: x.label,
+        cells: [`<span class="muted">${i + 1}</span>`, `<b>${esc(x.label)}</b>`, fmtNum(x.n), fmt(x.v),
+          `<span class="kd-share"><i style="--w:${pct.toFixed(1)}%"></i><bdi dir="ltr">${fmtNum(pct, 1)}%</bdi></span>`],
+        x: { [groupH]: x.label, [countH]: x.n, [valueH]: raw(x.v), [t('kd.share')]: +pct.toFixed(1) } };
+    })
+  };
+}
+/* Group records into kdBreakdown items */
+function kdGroup(list, keyOf, labelOf, valOf) {
+  const m = new Map();
+  list.forEach(r => { const k = keyOf(r) || '-'; const g = m.get(k) || { key: k, label: labelOf(r) || '-', n: 0, v: 0 }; g.n++; g.v += Number(valOf(r) || 0); m.set(k, g); });
+  return [...m.values()];
+}

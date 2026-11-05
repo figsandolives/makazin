@@ -9,7 +9,7 @@
     'deliveryPrices', 'scrapReturn', 'dailySessions', 'devices', 'status', 'deliveryZones', 'suppliers', 'units', 'cashiers',
     'productionStaff', 'storageLocations', 'countryOrigins', 'meta', 'users', 'branches', 'tables', 'stockReturn',
     'paymentMethods', 'orderTypes', 'discounts', 'discountUsage', 'materialCategories', 'supplierReturns',
-    'cashierTransfers', 'receiving', 'locStock', 'batchStock'];
+    'cashierTransfers', 'receiving', 'locStock', 'batchStock', 'customerLevelSettings'];
   const DB = 'raseed-copy', VERSION = 1;
   const supported = !LIVE.mock && typeof indexedDB !== 'undefined' && typeof FigsRTDB !== 'undefined';
   const client = () => FigsRTDB.client();

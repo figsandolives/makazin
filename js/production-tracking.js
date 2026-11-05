@@ -133,8 +133,8 @@ PAGES['production-tracking'] = view => {
         </table></div>
       </section>`;
     setKpis($('#ptK', view), [
-      kpiCard({ label: t('pt.kLive'), value: allBatches.length, ic: 'layers', tone: 'c1' }),
-      kpiCard({ label: t('pt.kQty'), value: allBatches.reduce((s, b) => s + b.qty, 0), ic: 'box', tone: 'c2' }),
+      kpiCard({ label: t('pt.kLive'), value: allBatches.length, ic: 'layers', tone: 'c1', drill: 'live' }),
+      kpiCard({ label: t('pt.kQty'), value: allBatches.reduce((s, b) => s + b.qty, 0), ic: 'box', tone: 'c2', drill: 'qty' }),
       alertKpi('soon', t('pt.kSoon'), allBatches.filter(b => isAlert('soon', b)).length, 'clock'),
       alertKpi('expired', t('pt.kExpired'), allBatches.filter(b => isAlert('expired', b)).length, 'alert')
     ].join(''), first);
@@ -311,7 +311,29 @@ PAGES['production-tracking'] = view => {
     }
     const tr = e.target.closest('tr.pt-row'); if (tr && !e.target.closest('.rm-btn')) open(tr);
   });
+  // Card pages: every live batch (soonest expiry first) and the quantity left per product
+  const closeDrill = kpiDrills(view, { paths: PT_PATHS, ready: () => LIVE.loaded(PT_PATHS), build: kind => {
+    const prods = LIVE.cache.products || {}, brs = st.branch === 'all' ? ptBranches() : [st.branch];
+    const batches = Object.keys(prods).flatMap(pid => brs.flatMap(br => batchView(pid, br).list.map(b => ({ ...b, pid, br }))));
+    const pname = pid => nameOf(prods[pid]) || '-', q3 = v => fmtNum(v, 3);
+    const openP = pid => { closeDrill(); st.pid = `product:${pid}`; draw(); scrollTo({ top: 0, behavior: 'smooth' }); };
+    const sub = st.branch === 'all' ? t('allBranches') : branchLabel(st.branch);
+    if (kind === 'live') {
+      const list = batches.sort((a, b) => (a.days ?? 1e9) - (b.days ?? 1e9));
+      const left = b => (b.days == null ? '<span class="muted">—</span>' : b.days < 0 ? `<span class="badge tone-danger">${t('pt.expiredAgo').replace('{n}', -b.days)}</span>`
+        : `<span class="badge tone-${b.state === 'soon' ? 'warning' : 'success'}">${b.days === 0 ? t('pt.today') : t('pt.daysLeft').replace('{n}', b.days)}</span>`);
+      return { sub, ic: 'layers', file: 'live-batches.xlsx', onRow: id => openP(id.split('|')[0]),
+        chips: [[t('pt.batches'), fmtNum(list.length)], [t('iv.totalQty'), q3(list.reduce((a, b) => a + b.qty, 0))], [t('pt.kSoon'), fmtNum(list.filter(b => b.state === 'soon').length), 'warning'], [t('pt.kExpired'), fmtNum(list.filter(b => b.state === 'expired').length), 'danger']],
+        cols: [{ h: t('c.name') }, { h: t('c.branch') }, { h: t('iv.prodDate') }, { h: t('iv.expiry') }, { h: t('pt.state') }, { h: t('pt.inStock'), end: 1 }],
+        rows: list.map(b => ({ id: `${b.pid}|${b.br}|${b.key}`, text: `${pname(b.pid)} ${(prods[b.pid] || {}).code || ''} ${branchLabel(b.br)}`,
+          cells: [`<b>${esc(pname(b.pid))}</b>`, esc(branchLabel(b.br) || '-'), `<span class="mono">${esc(b.productionDate || '—')}</span>`, `<span class="mono">${esc(b.expiryDate || '—')}</span>`, left(b), `<b>${q3(b.qty)}</b>`],
+          x: { [t('c.name')]: pname(b.pid), [t('c.branch')]: branchLabel(b.br) || '', [t('iv.prodDate')]: b.productionDate || '', [t('iv.expiry')]: b.expiryDate || '', [t('pt.inStock')]: +b.qty.toFixed(3) } })) };
+    }
+    if (kind === 'qty') return { ...kdBreakdown({ title: '', sub, ic: 'box', file: 'live-qty-by-product.xlsx', groupH: t('c.name'), countH: t('pt.batches'), valueH: t('pt.inStock'), kind: 'num',
+      items: kdGroup(batches, b => b.pid, b => pname(b.pid), b => b.qty) }), onRow: openP };
+    return null;
+  } });
   const unsub = LIVE.watch(PT_PATHS, draw);
   draw();
-  return () => { unsub(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); freshDrawer(false); };
 };

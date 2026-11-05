@@ -1945,3 +1945,60 @@ tr.dj-inv { cursor: pointer; } tr.dj-inv:hover td { background: var(--surface-2)
 .ci-foot { color: var(--text-3); font-size: .74rem; text-align: end; }
 tr.rp-click-row { cursor: pointer; }
 tr.rp-click-row:hover td { background: var(--surface-2); }
+
+/* Customers — level settings */
+.lv-how { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); font-size: .84rem; color: var(--text-2); }
+.lv-how .ic { width: 18px; height: 18px; flex-shrink: 0; color: var(--primary); margin-top: 2px; }
+.lv-how b { color: var(--text); display: block; margin-bottom: 4px; }
+.lv-how ul { margin: 0; padding-inline-start: 18px; display: grid; gap: 4px; line-height: 1.6; }
+.lv-box { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px 14px; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-width: 0; }
+.lv-box legend { padding: 0 6px; font-weight: 700; font-size: .86rem; }
+.lv-box .field { margin: 0; min-width: 0; }
+.lv-in { display: flex; align-items: center; gap: 8px; }
+.lv-in input { flex: 1; min-width: 0; }
+.lv-in span { color: var(--text-3); font-size: .8rem; white-space: nowrap; }
+.lv-hint { display: block; color: var(--text-3); font-size: .76rem; line-height: 1.5; margin-top: 4px; }
+.lv-preview { display: grid; gap: 8px; font-size: .84rem; }
+.lv-preview:empty { display: none; }
+.lv-counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.lv-counts em { font-style: normal; font-weight: 700; margin-inline-start: 4px; }
+#lvErr { color: var(--danger); }
+@media (max-width: 560px) { .lv-box { grid-template-columns: 1fr; } }
+.lv-box.lv-3 { grid-template-columns: repeat(3, 1fr); }
+.lv-box:not(.lv-3) { grid-template-columns: 1fr; }
+@media (max-width: 560px) { .lv-box.lv-3 { grid-template-columns: 1fr; } }
+
+/* Clickable summary cards + their detail drawer */
+.kpi-link { cursor: pointer; position: relative; }
+.kpi-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.kpi-go { position: absolute; top: 16px; inset-inline-end: 16px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: var(--text-3); background: var(--surface-2); opacity: .7; transition: opacity var(--med), transform var(--med), color var(--med); }
+.kpi-go svg { width: 14px; height: 14px; }
+[dir="ltr"] .kpi-go svg { transform: scaleX(-1); }
+.kpi-link:hover .kpi-go, .kpi-link:focus-visible .kpi-go { opacity: 1; color: var(--primary); transform: translateX(-3px); }
+[dir="ltr"] .kpi-link:hover .kpi-go { transform: translateX(3px); }
+.kpi-link .kpi-top { padding-inline-end: 34px; }
+.kd { display: grid; gap: 14px; align-content: start; }
+.kd-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.kd-chip { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--surface-2); display: grid; gap: 2px; min-width: 0; }
+.kd-chip small { color: var(--text-3); font-size: .76rem; }
+.kd-chip b { font-size: 1.05rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.kd-chip.tone-accent b { color: var(--c3); } .kd-chip.tone-info b { color: var(--c1); } .kd-chip.tone-danger b { color: var(--danger); } .kd-chip.tone-success b { color: var(--success, var(--c2)); }
+.kd-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kd-tools .search-field { flex: 1; min-width: 180px; }
+.kd-n { color: var(--text-3); font-size: .82rem; white-space: nowrap; }
+.kd-row { cursor: pointer; }
+.kd-row:hover td, .kd-row:focus-visible td { background: var(--surface-2); }
+.kd-row:focus-visible { outline: none; }
+.kd-more { display: flex; justify-content: center; }
+.kd-more:empty { display: none; }
+.kd-table td { vertical-align: middle; }
+.kd-head { margin-bottom: 16px; }
+section.kd-chips { margin-bottom: 16px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+section.kd-chips .kd-chip { padding: 14px 16px; background: var(--surface); }
+section.kd-chips .kd-chip b { font-size: 1.3rem; }
+.kd-more { padding: 12px; }
+.kd-on > :not(.kd-host) { display: none !important; }
+.kd-share { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.kd-share i { flex: 1; height: 6px; border-radius: 99px; background: var(--surface-2); position: relative; overflow: hidden; }
+.kd-share i::before { content: ''; position: absolute; inset-block: 0; inset-inline-start: 0; width: var(--w); background: var(--primary); border-radius: inherit; }
+.kd-share bdi { font-size: .78rem; color: var(--text-3); min-width: 44px; text-align: end; font-variant-numeric: tabular-nums; }

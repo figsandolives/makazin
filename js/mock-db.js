@@ -79,9 +79,14 @@ window.MOCK_DB = (() => {
       cu1: { nameAr: 'أحمد الكندري', nameEn: 'أحمد الكندري', phone: '99001122', addresses: [{ id: 'addr-1', zoneId: 'z1', details: 'قطعة 3 شارع 5 منزل 12' }, { id: 'addr-2', zoneId: 'z2', details: 'برج الريم' }], zoneId: 'z1', address: 'قطعة 3 شارع 5 منزل 12', createdAt: now - 60 * DAY },
       cu2: { nameAr: 'نورة العتيبي', nameEn: 'نورة العتيبي', phone: '66554433', addresses: [{ id: 'addr-3', zoneId: 'z3', details: 'قطعة 1' }], zoneId: 'z3', address: 'قطعة 1', createdAt: now - 30 * DAY },
       cu3: { nameAr: 'خالد <i>المطيري</i>', nameEn: 'Khaled', phone: '55112233', addresses: [], isBlocked: true, blockReason: 'طلبات وهمية متكررة', createdAt: now - 20 * DAY },
-      cu4: { nameAr: 'سارة', nameEn: 'سارة', phone: '90909090', createdAt: now - 3 * DAY }
+      cu4: { nameAr: 'سارة', nameEn: 'سارة', phone: '90909090', createdAt: now - 3 * DAY },
+      // Cashier format: name + {area, details}; orders link by phone only (no customerId)
+      cu5: { id: 'cu5', name: 'ناهده', phone: '96597939961', addresses: [{ area: 'السرة', details: 'ق 6 ش 12 م 3' }, { area: 'خيطان', details: '' }] }
     },
     orders: {
+      oc1: { invoiceNumber: '045', name: 'ناهده', customerName: 'ناهده', phoneNumber: '96597939961', createdAt: now - 5 * DAY, branchId: 'main', cashier: 'أحمد حلمي', orderType: 'delivery', deliveryZoneName: 'السرة', address: 'السرة - ق 6 ش 12 م 3', items: [{ productId: 'prd1', qty: 10, price: 2.5 }], subtotal: 24, netTotal: 24, deliveryFee: 1, total: 25 },
+      oc2: { invoiceNumber: '051', name: 'ناهده', customerName: 'ناهده', phoneNumber: '96597939961', createdAt: now - 4 * DAY, branchId: 'main', cashier: 'أحمد حلمي', orderType: 'delivery', deliveryZoneName: 'السرة', address: 'السرة - ق 6 ش 12 م 3', items: [{ productId: 'prd1', qty: 10, price: 2.2 }], subtotal: 22, netTotal: 22, deliveryFee: 1, total: 23 },
+      oc3: { invoiceNumber: '060', name: 'ناهده', customerName: 'ناهده', phoneNumber: '97939961', createdAt: now - 3 * DAY, branchId: 'main', cashier: 'أحمد حلمي', orderType: 'delivery', deliveryZoneName: 'السرة', address: 'السرة - ق 6 ش 12 م 3', items: [{ productId: 'prd1', qty: 8, price: 2.5 }], subtotal: 20, netTotal: 20, deliveryFee: 1, total: 21 },
       o1: { orderNumber: 1201, invoiceNumber: '1201', dailySessionId: 'ds1', orderType: 'delivery', courierName: 'مندوب ١', tableNumber: '١', status: 'paid', createdAt: now - 2 * 3600000, branchId: 'main', cashierId: 'k1', cashierName: 'كاشير حولي', customerId: 'cu1', customerName: 'أحمد الكندري', customerPhone: '99001122', deliveryZoneId: 'z1', deliveryAddress: 'قطعة 3 شارع 5', orderTypeId: 'ot1', paymentMethodId: 'pm2',
         items: [{ productId: 'prd1', productName: 'كرواسون زبدة', qty: 14, price: 0.45, unit: 'حبة', notes: 'بدون سكر' }, { productId: 'prd3', productName: 'كيكة الشوكولاتة', qty: 2, price: 6.5, unit: 'كرتون' }], subtotal: 19.3, netTotal: 19.3, deliveryFee: 1, discountType: 'fixed', discountValue: 2, discountAmount: 2, discount: 2, total: 18.3,
         stockDeducted: true, stockMovements: { prd1: { branchId: 'main', quantity: 14 }, prd3: { branchId: 'main', quantity: 2 } } },
