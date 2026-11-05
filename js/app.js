@@ -798,6 +798,28 @@ document.addEventListener('mouseover', e => { const el = e.target.closest('[data
 document.addEventListener('mouseout', e => { if (e.target.closest('[data-tip]')) hideTip(); });
 document.addEventListener('scroll', hideTip, { passive: true, capture: true });
 
+/* Back to top: appears after scrolling down; its ring shows how far down the page is */
+(() => {
+  const R = 27, LEN = 2 * Math.PI * R;
+  const btn = document.createElement('button');
+  btn.className = 'to-top'; btn.type = 'button';
+  btn.innerHTML = `<svg class="ring" viewBox="0 0 60 60" aria-hidden="true"><circle class="bg" cx="30" cy="30" r="${R}"/><circle class="fg" cx="30" cy="30" r="${R}" stroke-dasharray="${LEN}" stroke-dashoffset="${LEN}"/></svg>${icon('arrowUp')}`;
+  document.body.appendChild(btn);
+  const fg = btn.querySelector('.fg');
+  let raf = 0;
+  const update = () => {
+    raf = 0;
+    const el = document.scrollingElement, max = el.scrollHeight - el.clientHeight, y = el.scrollTop;
+    btn.classList.toggle('show', y > 360);
+    if (btn.dataset.lang !== S.lang) { btn.dataset.lang = S.lang; btn.setAttribute('aria-label', t('toTop')); btn.title = t('toTop'); }
+    fg.style.strokeDashoffset = max > 0 ? LEN * (1 - Math.min(1, y / max)) : LEN;
+  };
+  addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(update); }, { passive: true });
+  addEventListener('hashchange', () => setTimeout(update, 50));
+  btn.addEventListener('click', () => { scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); btn.blur(); });
+  update();
+})();
+
 let rz;
 addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { $$('.seg').forEach(placeThumb); if (innerWidth >= 1024) html.classList.remove('sb-open'); }, 100); });
 addEventListener('hashchange', go);

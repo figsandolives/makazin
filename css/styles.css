@@ -87,9 +87,34 @@ button { cursor: pointer; background: none; border: 0; padding: 0; -webkit-tap-h
 .muted { color: var(--text-3); font-size: .86rem; }
 .pos { color: var(--success); } .neg { color: var(--danger); }
 ::selection { background: var(--primary-soft); }
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
-::-webkit-scrollbar-track { background: transparent; }
+/* Scrollbars: always visible and easy to grab with the mouse */
+::-webkit-scrollbar { width: 14px; height: 12px; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-3) 42%, transparent); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; min-height: 48px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--text-3) 70%, transparent); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:active { background: var(--primary); background-clip: padding-box; }
+::-webkit-scrollbar-track { background: color-mix(in srgb, var(--text-3) 8%, transparent); }
+::-webkit-scrollbar-corner { background: transparent; }
+.sb-nav::-webkit-scrollbar { width: 8px; }
+.sb-nav::-webkit-scrollbar-track { background: transparent; }
+
+/* Back to top: shows once the page is scrolled down; the ring fills as you scroll */
+.to-top { position: fixed; z-index: 60; inset-block-end: 24px; inset-inline-end: 28px; width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+  display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 12px 28px -8px color-mix(in srgb, var(--primary) 70%, transparent);
+  opacity: 0; transform: translateY(24px) scale(.8); pointer-events: none; transition: opacity 260ms var(--ease), transform 420ms var(--spring), box-shadow 200ms var(--ease); }
+.to-top.show { opacity: 1; transform: none; pointer-events: auto; }
+.to-top:hover { transform: translateY(-3px); box-shadow: 0 16px 34px -8px color-mix(in srgb, var(--primary) 85%, transparent); }
+.to-top:active { transform: scale(.94); }
+.to-top:focus-visible { outline: 3px solid var(--primary-soft); outline-offset: 3px; }
+.to-top .ic { width: 22px; height: 22px; position: relative; z-index: 1; }
+.to-top.show .ic { animation: toTopBob 1.8s ease-in-out infinite; }
+.to-top:hover .ic { animation: none; }
+@keyframes toTopBob { 50% { transform: translateY(-3px); } }
+.to-top svg.ring { position: absolute; inset: -4px; width: 60px; height: 60px; transform: rotate(-90deg); pointer-events: none; }
+.to-top .ring circle { fill: none; stroke-width: 3; }
+.to-top .ring .bg { stroke: color-mix(in srgb, var(--primary) 18%, transparent); }
+.to-top .ring .fg { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset 120ms linear; }
+@media (prefers-reduced-motion: reduce) { .to-top, .to-top .ic { transition: none; animation: none !important; } }
+@media print { .to-top { display: none; } }
 
 /* Aurora background — gradients only, transform-animated */
 .aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background:
@@ -1903,5 +1928,20 @@ tr.dj-inv { cursor: pointer; } tr.dj-inv:hover td { background: var(--surface-2)
 .donut .seg.rp-click:hover { opacity: .8; }
 .chart-wrap.rp-click svg { cursor: pointer; }
 .rp-in .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.rp-cardacts { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.rp-dl { color: var(--text-3); }
+.rp-dl:hover { color: var(--primary); }
+#rpChart .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* Chart image (chart-image.js): drawn off screen, then saved as PNG */
+.ci-box { position: fixed; top: 0; left: -100000px; z-index: -1; padding: 28px; background: var(--bg); color: var(--text); font-family: inherit; display: grid; gap: 16px; }
+.ci-box *, .ci-box *::before, .ci-box *::after { animation: none !important; transition: none !important; }
+.ci-box > .card { margin: 0; box-shadow: none; }
+.ci-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 3px solid var(--primary); }
+.ci-head h2 { font-size: 1.35rem; letter-spacing: -.01em; line-height: 1.35; }
+.ci-head p { color: var(--text-3); font-size: .86rem; margin-top: 4px; }
+.ci-brand { display: inline-flex; align-items: center; gap: 8px; color: var(--primary); font-weight: 700; flex-shrink: 0; }
+.ci-brand .logo { width: 36px; height: 36px; }
+.ci-foot { color: var(--text-3); font-size: .74rem; text-align: end; }
 tr.rp-click-row { cursor: pointer; }
 tr.rp-click-row:hover td { background: var(--surface-2); }

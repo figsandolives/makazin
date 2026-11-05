@@ -54,7 +54,7 @@ const I18N = {
     // columns
     'c.id': 'الرقم', 'c.customer': 'العميل', 'c.type': 'النوع', 'c.branch': 'الفرع', 'c.items': 'الأصناف', 'c.total': 'الإجمالي',
     'c.payment': 'الدفع', 'c.date': 'التاريخ', 'c.status': 'الحالة', 'c.employee': 'الموظف', 'c.checkIn': 'الحضور', 'c.checkOut': 'الانصراف',
-    'c.hours': 'الساعات', 'c.sales': 'المبيعات', 'c.name': 'الاسم', 'c.phone': 'الجوال', 'c.city': 'المدينة', 'c.orders': 'الطلبات',
+    'c.hours': 'الساعات', 'c.sales': 'المبيعات', 'c.name': 'الاسم', 'c.phone': 'رقم الهاتف', 'c.city': 'المدينة', 'c.orders': 'الطلبات',
     'c.spent': 'إجمالي الإنفاق', 'c.lastOrder': 'آخر طلب', 'c.tier': 'الفئة', 'c.code': 'الكود', 'c.category': 'التصنيف', 'c.price': 'السعر',
     'c.cost': 'التكلفة', 'c.stock': 'المخزون', 'c.active': 'مفعّل', 'c.barcode': 'الباركود', 'c.unit': 'الوحدة', 'c.calories': 'السعرات',
     'c.prep': 'وقت التحضير', 'c.tax': 'الضريبة', 'c.products': 'المنتجات', 'c.sort': 'الترتيب', 'c.symbol': 'الرمز', 'c.base': 'الوحدة الأساسية',
@@ -201,10 +201,10 @@ Object.assign(I18N.ar, {
   'pu.receipts': 'سندات الاستلام', 'pu.receiptNo': 'سند استلام', 'pu.noReceipts': 'لم يتم أي استلام بعد', 'pu.receiptTitle': 'سند استلام مشتريات', 'pu.receivedTotal': 'إجمالي المستلم',
   'pu.cannotDeleteReceived': 'لا يمكن حذف طلب تم استلامه أو استلام جزء منه — الكميات دخلت المخزون', 'pu.deleteQ': 'حذف طلب الشراء؟',
   'pu.deleteNote': 'سيُحذف الطلب وحركته المعلّقة نهائياً.',
-  'sp.sub': 'الموردون والأصناف التي يوردونها — تظهر في نموذج طلب الشراء', 'sp.new': 'مورد جديد', 'sp.searchPh': 'ابحث بالاسم أو رقم الجوال…',
+  'sp.sub': 'الموردون والأصناف التي يوردونها — تظهر في نموذج طلب الشراء', 'sp.new': 'مورد جديد', 'sp.searchPh': 'ابحث بالاسم أو رقم الهاتف…',
   'sp.open': 'طلبات مفتوحة', 'sp.lastPurchase': 'آخر طلب', 'sp.value30': 'المشتريات (30 يوماً)', 'sp.kCount': 'الموردون', 'sp.kItems': 'أصناف مرتبطة بموردين',
   'sp.kOpen': 'طلبات مفتوحة', 'sp.kValue30': 'المشتريات (30 يوماً)', 'sp.items': 'أصناف المورد', 'sp.none': 'لا يوجد موردون بعد', 'sp.noneSub': 'أضف أول مورد للبدء',
-  'sp.editTitle': 'تعديل المورد', 'sp.nameAr': 'الاسم بالعربي', 'sp.nameEn': 'الاسم بالإنجليزي', 'sp.badPhone': 'رقم الجوال غير صحيح', 'sp.duplicate': 'يوجد مورد بنفس الاسم',
+  'sp.editTitle': 'تعديل المورد', 'sp.nameAr': 'الاسم بالعربي', 'sp.nameEn': 'الاسم بالإنجليزي', 'sp.badPhone': 'رقم الهاتف غير صحيح', 'sp.duplicate': 'يوجد مورد بنفس الاسم',
   'sp.itemsSub': 'الأصناف التي تظهر عند إنشاء طلب شراء من هذا المورد', 'sp.remove': 'إزالة الصنف', 'sp.noItems': 'لا توجد أصناف مرتبطة', 'sp.addItems': 'إضافة أصناف',
   'sp.otherSuppliers': 'موردون آخرون:', 'sp.addSelected': 'إضافة المحدد', 'sp.removed': 'أُزيل من أصناف المورد', 'sp.addedItems': 'تمت إضافة الأصناف',
   'sp.hasOpen': 'لا يمكن حذف المورد — لديه {n} طلب شراء مفتوح', 'sp.deleteQ': 'حذف المورد؟', 'sp.deleteNote': 'سيُفك ارتباطه بالأصناف، وتبقى طلبات الشراء القديمة كما هي.'
@@ -334,7 +334,7 @@ Object.assign(I18N.en, {
 
 /* الطلبات · طلبات الأونلاين · العملاء */
 Object.assign(I18N.ar, {
-  'o.sub': 'فواتير الكاشير مع العميل والمنطقة والتوصيل — طباعة وتعديل وإلغاء', 'o.searchPh': 'ابحث برقم الفاتورة أو العميل أو الهاتف…',
+  'o.sub': 'فواتير الكاشير مع العميل والمنطقة والتوصيل — طباعة وتعديل وإلغاء', 'o.searchPh': 'ابحث برقم الفاتورة أو العميل أو الهاتف أو المنتج…',
   'o.number': 'رقم الفاتورة', 'o.customer': 'العميل', 'o.zone': 'المنطقة', 'o.cashier': 'الكاشير', 'o.branch': 'الفرع', 'o.type': 'نوع الطلب',
   'o.net': 'الصافي', 'o.fee': 'التوصيل', 'o.grand': 'الإجمالي', 'o.payment': 'طريقة الدفع', 'o.address': 'العنوان', 'o.table': 'رقم الطاولة',
   'o.product': 'المنتج', 'o.price': 'السعر', 'o.unit': 'الوحدة', 'o.invoice': 'فاتورة', 'o.pdf': 'PDF', 'o.status': 'الحالة',
@@ -369,7 +369,7 @@ Object.assign(I18N.ar, {
   'cu.impExisting': 'رقم مسجل مسبقاً (تم تجاهله): {n}', 'cu.impInvalid': 'صفوف ناقصة الاسم أو الهاتف أو العنوان: {n}', 'cu.impNoZone': 'منطقة غير موجودة في مناطق التوصيل: {n}'
 });
 Object.assign(I18N.en, {
-  'o.sub': 'Cashier invoices with customer, zone and delivery — print, edit and cancel', 'o.searchPh': 'Search by invoice no., customer or phone…',
+  'o.sub': 'Cashier invoices with customer, zone and delivery — print, edit and cancel', 'o.searchPh': 'Search by invoice no., customer, phone or product…',
   'o.number': 'Invoice no.', 'o.customer': 'Customer', 'o.zone': 'Zone', 'o.cashier': 'Cashier', 'o.branch': 'Branch', 'o.type': 'Order type',
   'o.net': 'Net', 'o.fee': 'Delivery', 'o.grand': 'Total', 'o.payment': 'Payment', 'o.address': 'Address', 'o.table': 'Table no.',
   'o.product': 'Product', 'o.price': 'Price', 'o.unit': 'Unit', 'o.invoice': 'Invoice', 'o.pdf': 'PDF', 'o.status': 'Status',
@@ -476,7 +476,7 @@ Object.assign(I18N.ar, {
   'rp.ordersCount': 'عدد الطلبات', 'rp.salesAmount': 'مبلغ المبيعات', 'rp.netAmount': 'صافي مبلغ المبيعات', 'rp.current': 'الحالي', 'rp.compare': 'المقارنة', 'rp.newValue': 'قيمة جديدة',
   'rp.view': 'عرض', 'rp.comparison': 'مقارنة', 'rp.available': 'التقارير المتاحة', 'rp.sales': 'المبيعات', 'rp.cashierSales': 'مبيعات حسب الكاشير', 'rp.returns': 'المرتجعات',
   'rp.orderSales': 'مبيعات الطلبات', 'rp.tpChart': 'تحليل مبيعات المنتجات', 'rp.modeTop': 'أعلى المنتجات مبيعاً', 'rp.modeBottom': 'أقل المنتجات مبيعاً', 'rp.showReport': 'عرض التقرير',
-  'rp.salesOf': 'مبيعات', 'rp.revenue': 'المبيعات', 'rp.searchInvoice': 'ابحث برقم الفاتورة أو اسم العميل أو رقم الهاتف', 'rp.productsAmount': 'مبلغ المنتجات', 'rp.period': 'الفترة',
+  'rp.salesOf': 'مبيعات', 'rp.revenue': 'المبيعات', 'rp.searchInvoice': 'ابحث برقم الفاتورة أو اسم العميل أو رقم الهاتف أو اسم المنتج', 'rp.productsAmount': 'مبلغ المنتجات', 'rp.period': 'الفترة',
   'rp.invoices': 'عدد الفواتير', 'rp.totalProducts': 'اجمالي مبالغ المنتجات', 'rp.totalDelivery': 'اجمالي قيم التوصيل', 'rp.totalSales': 'اجمالي المبيعات', 'rp.totalNet': 'اجمالي صافي المبيعات',
   'rp.salesSub': 'مبيعات كل منتج في كل فرع', 'rp.searchProducts': 'ابحث عن منتج بالاسم أو الرمز', 'rp.nameAr': 'الاسم بالعربي', 'rp.nameEn': 'الاسم بالإنجليزي', 'rp.soldQty': 'الكمية المباعة',
   'rp.productRevenue': 'مبيعات المنتج', 'rp.allCats': 'كل التصنيفات', 'rp.totalRevenue': 'إجمالي المبيعات', 'rp.selected': 'المحدد', 'rp.selectedRevenue': 'إجمالي المبيعات (المحدد)',
@@ -493,7 +493,7 @@ Object.assign(I18N.en, {
   'rp.ordersCount': 'Orders Count', 'rp.salesAmount': 'Sales Amount', 'rp.netAmount': 'Net Sales Amount', 'rp.current': 'Current', 'rp.compare': 'Compare', 'rp.newValue': 'New value',
   'rp.view': 'View', 'rp.comparison': 'Comparison', 'rp.available': 'Available Reports', 'rp.sales': 'Sales', 'rp.cashierSales': 'Sales by Cashier', 'rp.returns': 'Returns',
   'rp.orderSales': 'Orders Sales', 'rp.tpChart': 'Products Sales Analysis', 'rp.modeTop': 'Top Selling Products', 'rp.modeBottom': 'Least Selling Products', 'rp.showReport': 'Show Report',
-  'rp.salesOf': 'Sales —', 'rp.revenue': 'Sales', 'rp.searchInvoice': 'Search by invoice #, customer name, or phone', 'rp.productsAmount': 'Products Amount', 'rp.period': 'Period',
+  'rp.salesOf': 'Sales —', 'rp.revenue': 'Sales', 'rp.searchInvoice': 'Search by invoice #, customer name, phone or product', 'rp.productsAmount': 'Products Amount', 'rp.period': 'Period',
   'rp.invoices': 'Invoices Count', 'rp.totalProducts': 'Total Products Amount', 'rp.totalDelivery': 'Total Delivery Amount', 'rp.totalSales': 'Total Sales', 'rp.totalNet': 'Total Net Sales',
   'rp.salesSub': 'Sales of each product in each branch', 'rp.searchProducts': 'Search products by name or code', 'rp.nameAr': 'Arabic Name', 'rp.nameEn': 'English Name', 'rp.soldQty': 'Sold Qty',
   'rp.productRevenue': 'Product Sales', 'rp.allCats': 'All categories', 'rp.totalRevenue': 'Total Sales', 'rp.selected': 'Selected', 'rp.selectedRevenue': 'Total Sales (selected)',
@@ -735,7 +735,7 @@ Object.assign(I18N.ar, {
   'tb.s.revenueDesc': 'الإيراد: من الأعلى', 'tb.s.revenueAsc': 'الإيراد: من الأقل', 'tb.s.number': 'رقم الطاولة', 'tb.virtual': 'من عدد طاولات الفرع',
   'tb.none': 'لا توجد طاولات', 'tb.noneSub': 'أضف طاولات الفروع لمتابعة طلباتها', 'tb.formSub': 'رقم الطاولة لا يتكرر داخل الفرع نفسه', 'tb.exists': 'هذا الرقم موجود في هذا الفرع',
   'tb.renumberNote': 'تغيير الرقم لا يغيّر الفواتير السابقة — تبقى مسجلة على الرقم القديم', 'tb.deleteQ': 'حذف الطاولة؟', 'tb.deleteNote': 'فواتيرها السابقة لا تُحذف',
-  'tb.dSearchPh': 'ابحث برقم الفاتورة أو العميل أو الجوال أو الكاشير', 'tb.allCashiers': 'كل الكاشير', 'tb.allTime': 'كل الفترات', 'tb.session': 'فتح وإغلاق الطاولة',
+  'tb.dSearchPh': 'ابحث برقم الفاتورة أو العميل أو رقم الهاتف أو الكاشير', 'tb.allCashiers': 'كل الكاشير', 'tb.allTime': 'كل الفترات', 'tb.session': 'فتح وإغلاق الطاولة',
   'tb.h': 'س', 'tb.m': 'د', 'tb.kProducts': 'إجمالي مبلغ المنتجات', 'tb.kDelivery': 'إجمالي التوصيل', 'tb.kTotal': 'إجمالي المبيعات',
   'tb.noOrders': 'لا توجد فواتير لهذه الطاولة', 'tb.noOrdersSub': 'غيّر الفترة أو الفلاتر'
 });
@@ -877,7 +877,7 @@ Object.assign(I18N.ar, {
   'pl.wait': 'انتظر قليلاً', 'pl.loading': 'جارٍ تحميل بياناتك...', 'pl.done': 'اكتمل التحميل',
   'pl.loaded': 'تم تحميل', 'pl.remaining': 'المتبقي', 'pl.timeLeft': 'الوقت المتبقي', 'pl.of': 'من',
   'pl.mb': 'م.ب', 'pl.kb': 'ك.ب', 'pl.sec': 'ث', 'pl.min': 'د', 'pl.lessSec': 'أقل من ثانية',
-  printSent: 'تم الإرسال إلى الطابعة', printFailed: 'تعذرت الطباعة المباشرة، اختر الطابعة من النافذة',
+  toTop: 'العودة إلى أعلى الصفحة', 'ci.download': 'تحميل صورة الرسم البياني', 'ci.done': 'تم تحميل صورة الرسم البياني', 'ci.failed': 'تعذر إنشاء الصورة، تأكد من الإنترنت', 'ci.made': 'أُنشئت في', printSent: 'تم الإرسال إلى الطابعة', printFailed: 'تعذرت الطباعة المباشرة، اختر الطابعة من النافذة',
   'pl.failed': 'تعذر تحميل البيانات من السيرفر', 'pl.netFailed': 'تعذر الاتصال بالسيرفر، تأكد من الإنترنت', 'pl.retry': 'إعادة المحاولة'
 });
 Object.assign(I18N.en, {
@@ -885,6 +885,6 @@ Object.assign(I18N.en, {
   'pl.wait': 'Please wait', 'pl.loading': 'Loading your data...', 'pl.done': 'Download complete',
   'pl.loaded': 'Downloaded', 'pl.remaining': 'Remaining', 'pl.timeLeft': 'Time left', 'pl.of': 'of',
   'pl.mb': 'MB', 'pl.kb': 'KB', 'pl.sec': 's', 'pl.min': 'min', 'pl.lessSec': 'under a second',
-  printSent: 'Sent to the printer', printFailed: 'Direct printing failed — choose the printer in the dialog',
+  toTop: 'Back to top', 'ci.download': 'Download chart image', 'ci.done': 'Chart image downloaded', 'ci.failed': 'Could not create the image — check the internet', 'ci.made': 'Created', printSent: 'Sent to the printer', printFailed: 'Direct printing failed — choose the printer in the dialog',
   'pl.failed': 'Could not load the data from the server', 'pl.netFailed': 'Could not reach the server — check the internet', 'pl.retry': 'Try again'
 });

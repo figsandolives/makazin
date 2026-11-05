@@ -128,6 +128,18 @@ PAGES.reports = view => {
   const inv = o => { const k = String(invRef.size); invRef.set(k, o); return k; };
   const clk = (html, kind, label, val = '') => html.replace('<article class="kpi card"', `<article class="kpi card rp-click" data-drill="${kind}" data-val="${esc(val)}" data-label="${esc(label)}" role="button" tabindex="0"`);
   const viewBtn = (kind, label) => `<button class="btn btn-sm btn-soft" data-drill="${kind}" data-label="${esc(label)}">${icon('eye')}<span>${t('rp.view')}</span></button>`;
+  // Chart image download (chart-image.js); `name` is the chart's own title
+  const dlBtn = name => `<button class="btn-icon sm rp-dl" data-chart-dl="${esc(name)}" aria-label="${esc(t('ci.download'))}" data-tip="${esc(t('ci.download'))}" data-tip-always>${icon('download')}</button>`;
+  /* What the dashboard shows, in words: «لشهر أكتوبر 2026 لكل الفروع» */
+  function periodWords() {
+    const r = rpRange(st.period, st.date), ar = S.lang === 'ar';
+    const day = ts => new Date(ts).toLocaleDateString(loc(), { day: 'numeric', month: 'long', year: 'numeric' });
+    const when = st.period === 'month' ? `${ar ? 'لشهر ' : ''}${new Date(r.start).toLocaleDateString(loc(), { month: 'long', year: 'numeric' })}`
+      : st.period === 'week' ? (ar ? `للأسبوع من ${day(r.start)} إلى ${day(r.end)}` : `${day(r.start)} – ${day(r.end)}`)
+      : `${ar ? 'ليوم ' : ''}${day(r.start)}`;
+    const where = st.branch === 'all' ? (ar ? 'لكل الفروع' : t('allBranches')) : `${ar ? 'لفرع ' : ''}${rpBranchName(st.branch)}`;
+    return ar ? `${when} ${where}` : `${when} — ${where}`;
+  }
   const branchOpts = v => `<option value="all">${t('allBranches')}</option>` + optsHtml(sortedOpts(LIVE.cache.branches), v);
 
   /* Sub-report frame: back, title, export / print, totals, filters, table */
@@ -228,7 +240,7 @@ PAGES.reports = view => {
     return {
       html: `<article class="card rp-metric" data-anim>
         <header class="card-head"><div><p class="kpi-label">${title}</p><b class="rp-val">${fmtV(total)}</b>${diff}</div>
-          <button class="btn btn-sm btn-soft" data-metric="${key}">${icon('eye')}<span>${t('rp.view')}</span></button></header>
+          <div class="rp-cardacts">${dlBtn(title)}<button class="btn btn-sm btn-soft" data-metric="${key}">${icon('eye')}<span>${t('rp.view')}</span></button></div></header>
         ${st.cmp ? `<div class="legend"><span><i class="sw c1"></i>${t('rp.current')}</span><span><i class="sw dashed"></i>${t('rp.compare')}</span></div>` : ''}
         <div class="chart-wrap"><div class="chart-tip"></div>${areaChart(series, labels, { h: 200, int: isCount, fmt: v => (isCount ? fmtNum(v) : fmtCompact(v)) })}</div>
       </article>`,
@@ -317,7 +329,7 @@ PAGES.reports = view => {
 
     const none = `<div class="empty-state sm">${icon('chart')}<b>${t('rp.noData')}</b><small>${t('rp.noDataSub')}</small></div>`;
     const group = (list, keyOf, labelOf, val) => Object.values(list.reduce((m, x) => { const k = keyOf(x.o); if (k == null) return m; (m[k] ||= { key: k, label: labelOf(x.o), v: 0, n: 0 }).v += val(x.o); m[k].n += 1; return m; }, {})).sort((a, b) => b.v - a.v);
-    const card = (title, sub, body, cls = '') => `<article class="card rp-in ${cls}"><header class="card-head"><div><h3>${title}</h3><p class="muted">${sub}</p></div>${viewBtn('all', title)}</header>${body}</article>`;
+    const card = (title, sub, body, cls = '') => `<article class="card rp-in ${cls}"><header class="card-head"><div><h3>${title}</h3><p class="muted">${sub}</p></div><div class="rp-cardacts">${dlBtn(title)}${viewBtn('all', title)}</div></header>${body}</article>`;
 
     // Branches: every branch (the branch filter doesn't apply), share of sales and change vs the compare period
     const bAll = rpBetween(range.start, range.end), bPrev = st.cmp ? group(rpBetween(cmpRange.start, cmpRange.end), o => o.branchId || 'unknown', oBranch, o => rpNum(o.total)) : [];
@@ -336,7 +348,7 @@ PAGES.reports = view => {
     const hMax = Math.max(...hrs.map(h => h.n)), peak = hrs.findIndex(h => h.n === hMax);
     const hLabel = h => new Intl.DateTimeFormat(loc(), { hour: 'numeric' }).format(new Date(2000, 0, 1, h));
     const peakHtml = hMax ? `<p class="rp-peak rp-click" data-drill="hour" data-val="${peak}" data-label="${esc(`${t('rp.peak')} · ${hLabel(peak)} – ${hLabel((peak + 1) % 24)}`)}">${icon('clock')}<span>${t('rp.peakAt')}</span><b>${hLabel(peak)} – ${hLabel((peak + 1) % 24)}</b><small>${hrs[peak].n} ${t('rp.ordersWord')}</small></p>
-      <div class="rp-hrs" dir="ltr">${hrs.map((h, i) => `<span class="${i === peak ? 'on' : ''}${h.n ? ' rp-click" data-drill="hour" data-val="' + i + '" data-label="' + esc(`${t('rp.peak')} · ${hLabel(i)} – ${hLabel((i + 1) % 24)}`) : ''}" title="${esc(`${hLabel(i)}: ${h.n} ${t('rp.ordersWord')} · ${moneyPlain(h.v)}`)}"><i style="--h:${((h.n / hMax) * 100).toFixed(1)}%;--d:${i * 20}ms"></i></span>`).join('')}</div>
+      <div class="rp-hrs" dir="ltr">${hrs.map((h, i) => `<span class="${i === peak ? 'on' : ''}${h.n ? ' rp-click" data-drill="hour" data-val="' + i + '" data-label="' + esc(`${t('rp.peak')} · ${hLabel(i)} – ${hLabel((i + 1) % 24)}`) : ''}" data-tip-always data-tip="${esc(`${hLabel(i)} – ${hLabel((i + 1) % 24)} · ${h.n} ${t('rp.ordersWord')} · ${moneyPlain(h.v)}`)}"><i style="--h:${((h.n / hMax) * 100).toFixed(1)}%;--d:${i * 20}ms"></i></span>`).join('')}</div>
       <div class="rp-hrs-ax" dir="ltr">${[0, 6, 12, 18, 23].map(h => `<small>${hLabel(h)}</small>`).join('')}</div>` : none;
 
     // Payment methods by sales value
@@ -419,12 +431,12 @@ PAGES.reports = view => {
       };
       const rows = inPeriod.filter(x => match(x) && (f.branch === 'all' || x.o.branchId === f.branch) && (f.cashier === 'all' || String(x.o.cashierId || '') === f.cashier) && (f.customer === 'all' || rpCustKey(x.o) === f.customer))
         .map(({ o, ts }) => ({ o, ts, num: oNum(o), cust: oCustName(o), phone: oPhone(o), products: rpProducts(o), fee: oCancelled(o) ? rpNum(o.deliveryFee ?? o.deliveryPrice) : oFee(o), total: rpNum(o.total), net: oCancelled(o) ? 0 : rpNet(o) }))
-        .filter(r => !q || normQ(`${r.num} ${r.cust} ${r.phone}`).includes(q)).sort((a, b) => b.ts - a.ts);
+        .filter(r => !q || normQ(`${r.num} ${r.cust} ${r.phone}`).includes(q) || oProductText(r.o).includes(q)).sort((a, b) => b.ts - a.ts);
       const tot = rows.reduce((a, r) => ({ n: a.n + 1, products: a.products + r.products, fee: a.fee + r.fee, total: a.total + r.total, net: a.net + r.net }), { n: 0, products: 0, fee: 0, total: 0, net: 0 });
       const opts = (key, label) => [...new Set(inPeriod.map(({ o }) => o[key]).filter(Boolean))].map(id => [id, label(id)]).sort((a, b) => a[1].localeCompare(b[1]));
       return { range, rows, tot, branches: opts('branchId', id => nameOf((LIVE.cache.branches || {})[id]) || id), cashiers: opts('cashierId', id => ((LIVE.cache.cashiers || {})[id] || {}).name || id), customers: [...inPeriod.reduce((m, { o }) => { const k = rpCustKey(o); if (k && !m.has(k)) m.set(k, rpCustLabel(o)); return m; }, new Map())].sort((a, b) => a[1].localeCompare(b[1])) };
     },
-    cols: () => ['#', t('o.number'), t('o.customer'), t('c.phone'), t('o.branch'), t('o.cashier'), t('rp.productsAmount'), t('o.fee'), t('o.grand')],
+    cols: () => ['#', t('o.number'), t('c.date'), t('o.customer'), t('c.phone'), t('o.branch'), t('o.cashier'), t('rp.productsAmount'), t('o.fee'), t('o.grand')],
     draw() {
       const d = this.data(), f = st.md;
       setHtml($('#rpSub', view), `${t('rp.period')}: ${rpRangeLabel(d.range)}${f.branch !== 'all' ? ` · ${esc(rpBranchName(f.branch))}` : ''}`);
@@ -433,16 +445,16 @@ PAGES.reports = view => {
       fill('customer', `<option value="all">${t('all')}</option>` + optsHtml(d.customers, f.customer));
       kpis([[t('rp.invoices'), d.tot.n, 'num', 'receipt', 'c1'], [t('rp.totalProducts'), d.tot.products, 'money', 'package', 'c2'], [t('rp.totalDelivery'), d.tot.fee, 'money', 'bike', 'c3'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c4'], [t('rp.totalNet'), d.tot.net, 'money', 'chart', 'c5']]);
       const c = this.cols();
-      setHtml($('#rpHead', view), th(c.slice(0, 6).concat(c.slice(6).map(x => [x, 'end']))));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(r.num)}</b>`)}${td(c[2], esc(r.cust))}${td(c[3], `<span class="mono">${esc(r.phone)}</span>`)}${td(c[4], esc(oBranch(r.o)))}${td(c[5], esc(oCashier(r.o)))}${td(c[6], money(r.products), 'end num')}${td(c[7], money(r.fee), 'end num')}${td(c[8], `<b>${money(r.total)}</b>`, 'end num')}</tr>`).join('') : empty(9, f.q || f.branch !== 'all' || f.cashier !== 'all' || f.customer !== 'all'));
+      setHtml($('#rpHead', view), th(c.slice(0, 7).concat(c.slice(7).map(x => [x, 'end']))));
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(r.num)}</b>`)}${td(c[2], `<span class="date">${fmtDateTime(oTime(r.o))}</span>`)}${td(c[3], esc(r.cust))}${td(c[4], `<span class="mono">${esc(r.phone)}</span>`)}${td(c[5], esc(oBranch(r.o)))}${td(c[6], esc(oCashier(r.o)))}${td(c[7], money(r.products), 'end num')}${td(c[8], money(r.fee), 'end num')}${td(c[9], `<b>${money(r.total)}</b>`, 'end num')}</tr>`).join('') : empty(10, f.q || f.branch !== 'all' || f.cashier !== 'all' || f.customer !== 'all'));
       setHtml($('#rpFoot', view), '');
     },
-    rows() { return this.data().rows.map((r, i) => [i + 1, r.num, r.cust, r.phone, oBranch(r.o), oCashier(r.o), r.products, r.fee, r.total]); },
-    export() { const c = this.cols(); excelOut(this.rows().map(r => Object.fromEntries(c.map((h, j) => [h, j >= 6 ? +r[j].toFixed(3) : r[j]]))), 'metric-details.xlsx'); },
+    rows() { return this.data().rows.map((r, i) => [i + 1, r.num, fmtDateTime(oTime(r.o)), r.cust, r.phone, oBranch(r.o), oCashier(r.o), r.products, r.fee, r.total]); },
+    export() { const c = this.cols(); excelOut(this.rows().map(r => Object.fromEntries(c.map((h, j) => [h, j >= 7 ? +r[j].toFixed(3) : r[j]]))), 'metric-details.xlsx'); },
     print() {
       const d = this.data(), f = st.md;
       printDoc(this.title(), [[t('rp.period'), rpRangeLabel(d.range)], [t('o.branch'), f.branch === 'all' ? t('all') : rpBranchName(f.branch)], [t('o.cashier'), f.cashier === 'all' ? t('all') : ((LIVE.cache.cashiers || {})[f.cashier] || {}).name || f.cashier], [t('o.customer'), f.customer === 'all' ? t('all') : (d.customers.find(c => c[0] === f.customer) || [, f.customer])[1]]],
-        this.cols(), this.rows().map(r => r.map((v, j) => (j >= 6 ? moneyPlain(v) : String(v)))),
+        this.cols(), this.rows().map(r => r.map((v, j) => (j >= 7 ? moneyPlain(v) : String(v)))),
         [[t('rp.invoices'), String(d.tot.n)], [t('rp.totalProducts'), moneyPlain(d.tot.products)], [t('rp.totalDelivery'), moneyPlain(d.tot.fee)], [t('rp.totalSales'), moneyPlain(d.tot.total)], [t('rp.totalNet'), moneyPlain(d.tot.net)]]);
     }
   };
@@ -527,10 +539,10 @@ PAGES.reports = view => {
       fill('branch', branchOpts(st.det.branch));
       kpis([[t('rp.totalRevenue'), d.total, 'money', 'wallet', 'c1'], [t('rp.invoices'), d.rows.length, 'num', 'receipt', 'c2']]);
       setHtml($('#rpHead', view), th([c[0], c[1], c[2], c[3], [c[4], 'end'], [c[5], 'end'], c[6]]));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[2], esc(oCustName(r.o)))}${td(c[3], esc(oCashier(r.o)))}${td(c[4], fmtNum(r.qty, 3), 'end num')}${td(c[5], `<b>${money(r.revenue)}</b>`, 'end num')}${td(c[6], `<span class="date">${fmtDateTime(r.ts)}</span>`)}</tr>`).join('') : empty(7, st.det.branch !== 'all'));
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[2], esc(oCustName(r.o)))}${td(c[3], esc(oCashier(r.o)))}${td(c[4], fmtNum(r.qty, 3), 'end num')}${td(c[5], `<b>${money(r.revenue)}</b>`, 'end num')}${td(c[6], `<span class="date">${fmtDateTime(oTime(r.o))}</span>`)}</tr>`).join('') : empty(7, st.det.branch !== 'all'));
       setHtml($('#rpFoot', view), '');
     },
-    rows() { return this.data().rows.map((r, i) => [i + 1, oNum(r.o), oCustName(r.o), oCashier(r.o), r.qty, r.revenue, fmtDateTime(r.ts)]); },
+    rows() { return this.data().rows.map((r, i) => [i + 1, oNum(r.o), oCustName(r.o), oCashier(r.o), r.qty, r.revenue, fmtDateTime(oTime(r.o))]); },
     export() { const c = this.cols(); excelOut(this.rows().map(r => Object.fromEntries(c.map((h, j) => [h, j === 5 ? +r[j].toFixed(3) : r[j]]))), 'product-sales-details.xlsx'); },
     print() {
       const p = this.product() || {}, d = this.data();
@@ -588,10 +600,10 @@ PAGES.reports = view => {
       $('.rp-tools', view).hidden = true;
       kpis([[t('rp.totalProducts'), d.tot.products, 'money', 'package', 'c1'], [t('rp.totalDelivery'), d.tot.fee, 'money', 'bike', 'c2'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c3']]);
       setHtml($('#rpHead', view), th(c.slice(0, 5).concat(c.slice(5, 8).map(x => [x, 'end'])).concat([c[8]])));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td(c[0], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[1], esc(oCustName(r.o)))}${td(c[2], `<span class="mono">${esc(oPhone(r.o))}</span>`)}${td(c[3], esc(oBranch(r.o)))}${td(c[4], esc(oCashier(r.o)))}${td(c[5], money(r.products), 'end num')}${td(c[6], money(r.fee), 'end num')}${td(c[7], `<b>${money(r.total)}</b>`, 'end num')}${td(c[8], `<span class="date">${fmtDateTime(r.ts)}</span>`)}</tr>`).join('') : empty(9));
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td(c[0], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[1], esc(oCustName(r.o)))}${td(c[2], `<span class="mono">${esc(oPhone(r.o))}</span>`)}${td(c[3], esc(oBranch(r.o)))}${td(c[4], esc(oCashier(r.o)))}${td(c[5], money(r.products), 'end num')}${td(c[6], money(r.fee), 'end num')}${td(c[7], `<b>${money(r.total)}</b>`, 'end num')}${td(c[8], `<span class="date">${fmtDateTime(oTime(r.o))}</span>`)}</tr>`).join('') : empty(9));
       setHtml($('#rpFoot', view), '');
     },
-    rows() { return this.data().rows.map(r => [oNum(r.o), oCustName(r.o), oPhone(r.o), oBranch(r.o), oCashier(r.o), r.products, r.fee, r.total, fmtDateTime(r.ts)]); },
+    rows() { return this.data().rows.map(r => [oNum(r.o), oCustName(r.o), oPhone(r.o), oBranch(r.o), oCashier(r.o), r.products, r.fee, r.total, fmtDateTime(oTime(r.o))]); },
     export() { const c = this.cols(); excelOut(this.rows().map(r => Object.fromEntries(c.map((h, j) => [h, j >= 5 && j <= 7 ? +r[j].toFixed(3) : r[j]]))), `cashier-${st.csd.cashierId}-orders.xlsx`); },
     print() {
       const d = this.data();
@@ -659,7 +671,7 @@ PAGES.reports = view => {
       if (!f.from || !f.to) return { rows: [], tot: { products: 0, fee: 0, total: 0, balance: 0 }, missing: true };
       const q = normQ(f.q); let balance = 0;
       const rows = rpOrders(f.from, f.to, f.branch).slice().sort((a, b) => a.ts - b.ts)
-        .filter(({ o }) => !q || normQ(`${oNum(o)} ${oCustName(o)} ${oPhone(o)}`).includes(q))
+        .filter(({ o }) => !q || normQ(`${oNum(o)} ${oCustName(o)} ${oPhone(o)}`).includes(q) || oProductText(o).includes(q))
         .map(({ o, ts }) => { balance += rpNum(o.total); return { o, ts, products: rpProducts(o), fee: oFee(o), total: rpNum(o.total), balance }; });
       const tot = rows.reduce((a, r) => ({ products: a.products + r.products, fee: a.fee + r.fee, total: a.total + r.total }), { products: 0, fee: 0, total: 0 });
       tot.balance = rows.length ? rows[rows.length - 1].balance : 0;
@@ -672,11 +684,11 @@ PAGES.reports = view => {
       const note = $('#rpNote', view); note.hidden = !d.missing; note.textContent = t('rp.pickPeriod');
       kpis([[t('rp.productsAmount'), d.tot.products, 'money', 'package', 'c1'], [t('rp.deliveryPrice'), d.tot.fee, 'money', 'bike', 'c2'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c3']]);
       setHtml($('#rpHead', view), th([c[0], c[1], c[2], c[3], [c[4], 'end'], [c[5], 'end'], [c[6], 'end'], c[7], [c[8], 'end']]));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[2], esc(oCustName(r.o)))}${td(c[3], `<span class="mono">${esc(oPhone(r.o))}</span>`)}${td(c[4], money(r.products), 'end num')}${td(c[5], money(r.fee), 'end num')}${td(c[6], money(r.total), 'end num')}${td(c[7], `<span class="date">${fmtDateTime(r.ts)}</span>`)}${td(c[8], `<b>${money(r.balance)}</b>`, 'end num')}</tr>`).join('')
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[2], esc(oCustName(r.o)))}${td(c[3], `<span class="mono">${esc(oPhone(r.o))}</span>`)}${td(c[4], money(r.products), 'end num')}${td(c[5], money(r.fee), 'end num')}${td(c[6], money(r.total), 'end num')}${td(c[7], `<span class="date">${fmtDateTime(oTime(r.o))}</span>`)}${td(c[8], `<b>${money(r.balance)}</b>`, 'end num')}</tr>`).join('')
         : d.missing ? `<tr class="empty"><td colspan="9"><div class="empty-state">${icon('calendar')}<b>${t('rp.pickPeriod')}</b><small>${t('rp.pickPeriodSub')}</small></div></td></tr>` : empty(9, st.os.q || st.os.branch !== 'all'));
       setHtml($('#rpFoot', view), d.rows.length ? `<tr><td colspan="4">${t('rp.total')}</td><td class="end num">${money(d.tot.products)}</td><td class="end num">${money(d.tot.fee)}</td><td class="end num">${money(d.tot.total)}</td><td class="rp-foot-gap">-</td><td class="end num">${money(d.tot.balance)}</td></tr>` : '');
     },
-    rows() { return this.data().rows.map((r, i) => [i + 1, oNum(r.o), oCustName(r.o), oPhone(r.o), r.products, r.fee, r.total, fmtDateTime(r.ts), r.balance]); },
+    rows() { return this.data().rows.map((r, i) => [i + 1, oNum(r.o), oCustName(r.o), oPhone(r.o), r.products, r.fee, r.total, fmtDateTime(oTime(r.o)), r.balance]); },
     export() {
       const c = this.cols(), d = this.data(), m = v => +v.toFixed(3);
       if (!d.rows.length) { toast(t('o.nothingToExport'), { tone: 'danger', ic: 'alert' }); return; }
@@ -702,7 +714,7 @@ PAGES.reports = view => {
       fill('mode', [['top', t('rp.modeTop')], ['bottom', t('rp.modeBottom')]].map(([v, l]) => `<option value="${v}" ${st.tp.mode === v ? 'selected' : ''}>${l}</option>`).join(''));
       fill('limit', [10, 50, 100].map(n => `<option ${st.tp.limit === n ? 'selected' : ''}>${n}</option>`).join(''));
       kpis([[t('rp.shownCount'), d.rows.length, 'num', 'package', 'c1'], [t('rp.shownTotal'), d.total, 'money', 'wallet', 'c2']]);
-      setHtml($('#rpChart', view), `<header class="card-head"><h3>${t('rp.tpChart')}</h3></header>${tpChart(d)}`);
+      setHtml($('#rpChart', view), `<header class="card-head"><h3>${t('rp.tpChart')}</h3>${dlBtn(t('rp.topProducts'))}</header>${tpChart(d)}`);
       setHtml($('#rpHead', view), th([t('rp.nameAr'), t('rp.nameEn')].concat(cols.map(c => [esc(c.label), 'end']))));
       setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr class="${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td(t('rp.nameAr'), `<b>${esc(r.nameAr)}</b>`)}${td(t('rp.nameEn'), esc(r.nameEn || '-'))}
         ${cols.map(c => { const v = rpNum(r.by[c.key]); return td(c.label, v ? `<button class="link num" data-tpd="${esc(r.productId)}" data-b="${esc(c.key)}">${money(v)}</button>` : `<span class="num muted">${money(0)}</span>`, 'end'); }).join('')}</tr>`).join('') : empty(2 + cols.length, st.tp.q || st.tp.from || st.tp.to));
@@ -749,10 +761,10 @@ PAGES.reports = view => {
       fill('cashier', `<option value="all">${t('all')}</option>` + optsHtml(d.cashiers, st.tpd.cashier));
       kpis([[t('rp.productsAmount'), d.tot.products, 'money', 'package', 'c1'], [t('o.fee'), d.tot.fee, 'money', 'bike', 'c2'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c3']]);
       setHtml($('#rpHead', view), th(c.slice(0, 5).concat(c.slice(5, 8).map(x => [x, 'end'])).concat([c[8]])));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td(c[0], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[1], esc(oBranch(r.o)))}${td(c[2], esc(oCashier(r.o)))}${td(c[3], esc(r.type))}${td(c[4], esc(r.addr))}${td(c[5], money(r.value), 'end num')}${td(c[6], money(r.fee), 'end num')}${td(c[7], `<b>${money(r.total)}</b>`, 'end num')}${td(c[8], `<span class="date">${fmtDateTime(r.ts)}</span>`)}</tr>`).join('') : empty(9, st.tpd.q || st.tpd.cashier !== 'all'));
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td(c[0], `<b class="mono">#${esc(oNum(r.o))}</b>`)}${td(c[1], esc(oBranch(r.o)))}${td(c[2], esc(oCashier(r.o)))}${td(c[3], esc(r.type))}${td(c[4], esc(r.addr))}${td(c[5], money(r.value), 'end num')}${td(c[6], money(r.fee), 'end num')}${td(c[7], `<b>${money(r.total)}</b>`, 'end num')}${td(c[8], `<span class="date">${fmtDateTime(oTime(r.o))}</span>`)}</tr>`).join('') : empty(9, st.tpd.q || st.tpd.cashier !== 'all'));
       setHtml($('#rpFoot', view), '');
     },
-    rows() { return this.data().rows.map(r => [oNum(r.o), oBranch(r.o), oCashier(r.o), r.type, r.addr, r.value, r.fee, r.total, fmtDateTime(r.ts)]); },
+    rows() { return this.data().rows.map(r => [oNum(r.o), oBranch(r.o), oCashier(r.o), r.type, r.addr, r.value, r.fee, r.total, fmtDateTime(oTime(r.o))]); },
     export() { const c = this.cols(); excelOut(this.rows().map(r => Object.fromEntries(c.map((h, j) => [h, j >= 5 && j <= 7 ? +r[j].toFixed(3) : r[j]]))), 'top-product-branch-details.xlsx'); },
     print() {
       const p = this.product() || {}, d = this.data();
@@ -889,6 +901,20 @@ PAGES.reports = view => {
       st.tpdBack = fromDash ? 'dashboard' : 'topProducts';
       st.tpd = { productId: tpd.dataset.tpd, branch: tpd.dataset.b || 'all', ...(fromDash ? periodF() : { from: st.tp.from, to: st.tp.to }), cashier: 'all', q: '' };
       go('topProductDetails'); return;
+    }
+    const dl = e.target.closest('[data-chart-dl]');
+    if (dl) {
+      const card = dl.closest('.card'), name = dl.dataset.chartDl, ar = S.lang === 'ar';
+      const day = v => (v ? rpDate(v).toLocaleDateString(loc(), { day: 'numeric', month: 'long', year: 'numeric' }) : '-');
+      const words = st.view === 'dashboard' ? periodWords()
+        : st.tp.from && st.tp.from === st.tp.to ? `${ar ? 'ليوم ' : ''}${day(st.tp.from)}`
+        : ar ? `من ${day(st.tp.from)} إلى ${day(st.tp.to)}` : `${day(st.tp.from)} – ${day(st.tp.to)}`;
+      const sub = $('.card-head p', card);
+      dl.classList.add('loading');
+      downloadChartImage(card, { title: `${chartTitle(name)} ${words}`, caption: [sub && sub.textContent, st.cmp && st.view === 'dashboard' ? t('rp.compare') : ''].filter(Boolean).join(' · '), file: `${name} ${words}`.replace(/[\\/:*?"<>|]+/g, '-') })
+        .then(() => toast(t('ci.done')), () => toast(t('ci.failed'), { tone: 'danger', ic: 'alert' }))
+        .finally(() => dl.classList.remove('loading'));
+      return;
     }
     const b = e.target.closest('[data-rp]');
     if (b) {

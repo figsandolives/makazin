@@ -76,7 +76,20 @@ function oSub(o) {
 }
 const oTotal = o => (oCancelled(o) ? 0 : Number(o.total ?? o.grandTotal ?? oSub(o) + oFee(o)) || 0);
 const oDiscount = o => (oCancelled(o) ? 0 : Number(o.discountAmount ?? o.discountTotal ?? o.discount ?? 0) || 0);
-const oText = o => normQ([oNum(o), oCustName(o), oPhone(o), oBranch(o), oCashier(o), oPay(o), oZone(o)].join(' '));
+// Names (Arabic and English) and codes of the products on an invoice, for searching by product.
+// Kept per order object: the live copy replaces an order's object only when that order changes.
+const oProdCache = new WeakMap();
+function oProductText(o) {
+  if (!o || typeof o !== 'object') return '';
+  let v = oProdCache.get(o);
+  if (v === undefined) {
+    const products = LIVE.cache.products || {};
+    v = normQ(oItems(o).map(it => { const p = products[it.productId]; return [it.productName, it.productNameEn, p && p.nameAr, p && p.nameEn, p && p.code].filter(Boolean).join(' '); }).join(' '));
+    oProdCache.set(o, v);
+  }
+  return v;
+}
+const oText = o => normQ([oNum(o), oCustName(o), oPhone(o), oBranch(o), oCashier(o), oPay(o), oZone(o)].join(' ')) + ' ' + oProductText(o);
 const dayStart = d => new Date(`${d}T00:00:00`).getTime(), dayEnd = d => new Date(`${d}T23:59:59`).getTime();
 const inRange = (ts, from, to) => !!ts && (!from || ts >= dayStart(from)) && (!to || ts <= dayEnd(to));
 const toLatin = v => String(v ?? '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
