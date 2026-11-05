@@ -98,7 +98,7 @@ button { cursor: pointer; background: none; border: 0; padding: 0; -webkit-tap-h
 .sb-nav::-webkit-scrollbar-track { background: transparent; }
 
 /* Back to top: shows once the page is scrolled down; the ring fills as you scroll */
-.to-top { position: fixed; z-index: 60; inset-block-end: 24px; inset-inline-end: 28px; width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+.to-top { position: fixed; z-index: 60; inset-block-end: 24px; left: calc(50% - 26px); width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
   display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 12px 28px -8px color-mix(in srgb, var(--primary) 70%, transparent);
   opacity: 0; transform: translateY(24px) scale(.8); pointer-events: none; transition: opacity 260ms var(--ease), transform 420ms var(--spring), box-shadow 200ms var(--ease); }
 .to-top.show { opacity: 1; transform: none; pointer-events: auto; }
@@ -115,6 +115,16 @@ button { cursor: pointer; background: none; border: 0; padding: 0; -webkit-tap-h
 .to-top .ring .fg { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset 120ms linear; }
 @media (prefers-reduced-motion: reduce) { .to-top, .to-top .ic { transition: none; animation: none !important; } }
 @media print { .to-top { display: none; } }
+/* Wide screens: the content area scrolls by itself (scrollbar on its left in Arabic, clearly visible) */
+@media screen and (min-width: 1024px) {
+  .app { height: 100dvh; min-height: 0; }
+  .main { height: 100dvh; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; scrollbar-gutter: stable; }
+  body.locked .main { overflow-y: hidden; }
+  .main::-webkit-scrollbar { width: 14px; }
+  .main::-webkit-scrollbar-track { background: color-mix(in srgb, var(--text-3) 12%, transparent); }
+  .main::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--primary) 60%, transparent); background-clip: padding-box; border: 3px solid transparent; border-radius: 10px; min-height: 60px; }
+  .main::-webkit-scrollbar-thumb:hover { background: var(--primary); background-clip: padding-box; }
+}
 
 /* Aurora background — gradients only, transform-animated */
 .aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background:

@@ -4,6 +4,12 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const html = document.documentElement;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+/* On wide screens the content area (.main) scrolls by itself, so its scrollbar
+   sits on the left side of the content (Arabic) instead of the window's right
+   edge next to the sidebar. Every scrollTo() in the app goes to it. */
+const pageScroller = () => { const m = document.querySelector('.main'); return m && getComputedStyle(m).overflowY === 'auto' ? m : document.scrollingElement; };
+const winScrollTo = window.scrollTo.bind(window);
+window.scrollTo = (...a) => { const el = pageScroller(); if (el === document.scrollingElement) winScrollTo(...a); else el.scrollTo(...a); };
 
 const S = {
   lang: html.lang === 'en' ? 'en' : 'ar',
@@ -812,13 +818,19 @@ document.addEventListener('scroll', hideTip, { passive: true, capture: true });
   let raf = 0;
   const update = () => {
     raf = 0;
-    const el = document.scrollingElement, max = el.scrollHeight - el.clientHeight, y = el.scrollTop;
+    const el = pageScroller(), max = el.scrollHeight - el.clientHeight, y = el.scrollTop;
     btn.classList.toggle('show', y > 360);
+    // In the middle of the content area, not in a corner
+    const m = document.querySelector('.main'), r = m ? m.getBoundingClientRect() : { left: 0, width: innerWidth };
+    btn.style.left = `${Math.round(r.left + r.width / 2 - 26)}px`;
     if (btn.dataset.lang !== S.lang) { btn.dataset.lang = S.lang; btn.setAttribute('aria-label', t('toTop')); btn.title = t('toTop'); }
     fg.style.strokeDashoffset = max > 0 ? LEN * (1 - Math.min(1, y / max)) : LEN;
   };
-  addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(update); }, { passive: true });
+  addEventListener('scroll', e => { if (!raf && (e.target === document || e.target === pageScroller())) raf = requestAnimationFrame(update); }, { passive: true, capture: true });
   addEventListener('hashchange', () => setTimeout(update, 50));
+  addEventListener('resize', () => { if (!raf) raf = requestAnimationFrame(update); });
+  // The sidebar folding open or closed moves the middle
+  new MutationObserver(() => setTimeout(update, 320)).observe(html, { attributes: true, attributeFilter: ['class'] });
   btn.addEventListener('click', () => { scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); btn.blur(); });
   update();
 })();

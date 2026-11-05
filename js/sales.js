@@ -1035,7 +1035,8 @@ PAGES.customers = view => {
   const zoneOpts = val => optsHtml([...CASHIER_AREAS, ...(val && !CASHIER_AREAS.includes(val) ? [val] : [])].map(a => [a, a]), val, t('cu.chooseZone'));
   const phoneTaken = (phone, exceptId) => { const k = phoneKey(phone); return !!k && Object.entries(LIVE.cache.customers || {}).some(([id, c]) => id !== exceptId && c && phoneKey(c.phone) === k); };
   // Same phone format and phone index as the cashier (it finds customers by customerPhoneIndex/965XXXXXXXX)
-  const cashierPhone = v => { const k = phoneKey(v); return /^\d{8}$/.test(k) ? `965${k}` : ''; };
+  // Same rule as the cashier: 8 digits, not a filler like 00000000
+  const cashierPhone = v => { const k = phoneKey(v); return /^\d{8}$/.test(k) && !/^(\d)\1{7}$/.test(k) ? `965${k}` : ''; };
 
   function openNew() {
     const dr = freshDrawer(false);
