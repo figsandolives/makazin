@@ -90,6 +90,13 @@
     if (query.endAt !== undefined && compare(value, query.endAt) > 0) return false;
     return true;
   }
+  // A query answered from a copy already in memory (same result as the server's).
+  function runQuery(value, query) {
+    let list = sortedEntries(value, query).filter(([key, item]) => matches(query, key, item));
+    if (query.limitToFirst) list = list.slice(0, query.limitToFirst);
+    if (query.limitToLast) list = list.slice(-query.limitToLast);
+    return list.length ? Object.fromEntries(list) : null;
+  }
 
   // Firebase-style push keys: time ordered, unique per browser.
   const PUSH_CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
@@ -160,6 +167,10 @@
       this.disconnectOps = new Map();
       this.loginPromise = null;
       this.refused = new Set();
+      // Local copy: pinned paths stay live for the whole session (and are saved on the device)
+      this.dirty = new Set();
+      this.copyListeners = new Set();
+      this.reloading = 0;
     }
     // A token the server refused is never sent again (an old cashier session
     // in sessionStorage cannot be cleared from here).
@@ -227,6 +238,16 @@
     // ---- reading ----
     queryString(entry) { return `${this.path}/value?path=${encodeURIComponent(entry.parts.join('/'))}${entry.query ? `&q=${encodeURIComponent(JSON.stringify(entry.query))}` : ''}`; }
     async load(entry) {
+      const base = entry.pinned ? null : this.pinnedOver(entry.parts);
+      if (base) {
+        // Read from the copy, after the change batch that asked for this has reached it
+        await null;
+        const value = getIn(base.value, entry.parts.slice(base.parts.length));
+        entry.value = entry.query ? runQuery(value, entry.query) : clone(value);
+        entry.ready = true;
+        entry.seq = this.seq;
+        return;
+      }
       const result = await this.request('GET', this.queryString(entry));
       entry.value = normalize(result.value);
       entry.ready = true;
@@ -243,6 +264,12 @@
       const id = `${parts.join('/')}?${query ? JSON.stringify(query) : ''}`;
       const live = this.entries.get(id);
       if (live?.ready && (this.connected || this.pendingWrites)) return { value: clone(live.value), order: live.order() };
+      const base = this.connected && this.pinnedOver(parts);
+      if (base) {
+        const value = getIn(base.value, parts.slice(base.parts.length));
+        const result = query ? runQuery(value, query) : clone(value);
+        return { value: result, order: query ? sortedEntries(result, query).map(([key]) => key) : null };
+      }
       if (this.pendingWrites) await Promise.all([this.queue, ...this.inflight]).catch(() => {});
       const entry = new Entry(this, parts, query);
       const result = await this.request('GET', this.queryString(entry));
@@ -269,7 +296,7 @@
     // (still updated live) for 30 s, as Firebase does, instead of fetching it again.
     unlisten(entry, callback) {
       entry.callbacks = callback ? entry.callbacks.filter(item => item !== callback) : [];
-      if (entry.callbacks.length || entry.dropTimer) return;
+      if (entry.callbacks.length || entry.dropTimer || entry.pinned) return;
       entry.dropTimer = setTimeout(() => {
         entry.dropTimer = null;
         if (!entry.callbacks.length && this.entries.get(entry.id) === entry) this.entries.delete(entry.id);
@@ -324,13 +351,19 @@
     }
     async reload(entry) {
       const before = JSON.stringify(entry.value);
-      await this.load(entry).catch(() => {});
-      if (JSON.stringify(entry.value) !== before) { const old = JSON.parse(before); this.fire(entry, new Set([...Object.keys({ ...(isObject(old) ? old : {}), ...(isObject(entry.value) ? entry.value : {}) }), '']), old); }
+      if (entry.pinned) this.reloading++;
+      try { await this.load(entry).catch(() => {}); } finally { if (entry.pinned) this.reloading--; }
+      if (JSON.stringify(entry.value) !== before) {
+        const old = JSON.parse(before);
+        if (entry.pinned) this.copyChanged([entry]);
+        this.fire(entry, new Set([...Object.keys({ ...(isObject(old) ? old : {}), ...(isObject(entry.value) ? entry.value : {}) }), '']), old);
+      }
     }
     // All changes of one batch are applied first; each listener then fires
     // once (a sale is ~10 path changes; firing per path froze big pages).
     applyChanges(changes, { local = false } = {}) {
       if (!local) for (const change of changes) { this.recent.push(change); if (this.recent.length > 5000) this.recent.shift(); }
+      const copy = [];
       for (const entry of this.entries.values()) {
         if (!entry.ready) continue;
         const before = entry.value;
@@ -338,8 +371,10 @@
         let reload = false;
         for (const change of changes) if (this.applyToEntry(entry, change, touched) === 'reload') reload = true;
         if (reload) { this.reload(entry); continue; }
+        if (entry.pinned && entry.value !== before) copy.push(entry);
         if (touched.size) this.fire(entry, touched, before);
       }
+      if (copy.length) this.copyChanged(copy);
     }
     // Returns 'reload' when the entry must be fetched again.
     applyToEntry(entry, change, touched) {
@@ -347,6 +382,8 @@
       const under = base.every((part, index) => path[index] === part);
       const over = path.length < base.length && path.every((part, index) => base[index] === part);
       if (!under && !over) return null;
+      // A query over the copy is worked out again from the copy (no request)
+      if (entry.query && !entry.pinned && this.pinnedOver(base)) return 'reload';
       if (change.big || (entry.query && (over || path.length === base.length)) || entry.limited && under) return 'reload';
       if (over) {
         const next = normalize(getIn(change.value, base.slice(path.length)));
@@ -502,6 +539,99 @@
     }
     async registerDisconnect() {
       await this.request('POST', `${this.path}/on-disconnect`, { client: this.clientId, ops: [...this.disconnectOps.entries()].map(([path, value]) => ({ path, value })) });
+    }
+
+    // ---- local copy ----
+    // Pinned paths are whole collections kept in memory and live; any read of
+    // them (or of a query or child inside them) is answered from memory.
+    pinnedOver(parts) {
+      for (let n = parts.length; n > 0; n--) {
+        const entry = this.entries.get(`${parts.slice(0, n).join('/')}?`);
+        if (entry?.pinned && entry.ready) return entry;
+      }
+      return null;
+    }
+    // values = {path: value}, all read at `seq` or later: the poll loop goes on from
+    // `seq`, and replaying a change a copy already has leaves it the same.
+    pin(values, seq) {
+      // Already polling from a later point: catch the copy up from what the loop has seen
+      const behind = this.seq !== null && seq < this.seq;
+      const gap = behind && !(this.recent.length && this.recent[0].seq <= seq + 1);
+      for (const [path, value] of Object.entries(values)) {
+        const parts = splitPath(path), id = `${parts.join('/')}?`;
+        const entry = this.entries.get(id) || new Entry(this, parts, null);
+        if (entry.dropTimer) { clearTimeout(entry.dropTimer); entry.dropTimer = null; }
+        Object.assign(entry, { value: normalize(value), ready: true, seq, pinned: true, loading: Promise.resolve() });
+        this.entries.set(id, entry);
+        if (gap) this.reload(entry);
+        else if (behind) for (const change of this.recent) if (change.seq > seq) this.applyToEntry(entry, change, new Set());
+      }
+      if (this.seq === null) this.seq = seq;
+      this.startPolling();
+    }
+    unpinAll() {
+      for (const [id, entry] of this.entries) if (entry.pinned) this.entries.delete(id);
+      this.dirty.clear();
+    }
+    pinned() { return [...this.entries.values()].filter(entry => entry.pinned && entry.ready).map(entry => entry.parts.join('/')); }
+    copyChanged(entries) {
+      for (const entry of entries) this.dirty.add(entry.parts.join('/'));
+      for (const listener of this.copyListeners) listener();
+    }
+    // What to save now: {seq, values} of the changed paths, or null while a save would
+    // catch a half-done state (a write not yet confirmed, a path being fetched again).
+    takeDirty() {
+      if (!this.dirty.size || this.reloading || this.pendingWrites || this.inflight.size || this.seq === null) return null;
+      const values = {};
+      for (const path of this.dirty) { const entry = this.entries.get(`${path}?`); if (entry?.pinned) values[path] = entry.value; }
+      this.dirty.clear();
+      return { seq: this.seq, values };
+    }
+    // Downloads whole collections side by side. onProgress({loaded, total, done, count}) in
+    // bytes as sent (gzip); a file still arriving is estimated from its unzipped bytes.
+    // `estimates` {path: bytes} stand in for a size until the server sends it (it waits
+    // a few seconds before the first byte of a big collection).
+    async download(paths, onProgress = () => {}, estimates = {}) {
+      const token = this.token();
+      const files = paths.map(path => ({ path, total: null, gzip: false, raw: 0, done: false }));
+      let ratio = 8;
+      const report = () => {
+        const size = file => file.total ?? (estimates[file.path] || 0);
+        const total = files.reduce((sum, file) => sum + size(file), 0);
+        const loaded = files.reduce((sum, file) => sum + (file.done ? file.total : Math.min(size(file) * 0.98, file.gzip ? file.raw / ratio : file.raw)), 0);
+        onProgress({ known: files.every(file => file.total !== null), total, loaded, done: files.filter(file => file.done).length, count: files.length, sizes: Object.fromEntries(files.filter(file => file.done).map(file => [file.path, file.total])) });
+      };
+      let seq = null;
+      const values = {};
+      await Promise.all(files.map(async file => {
+        const response = await this.fetch(`${this.apiBase}${this.path}/value?path=${encodeURIComponent(file.path)}`, { cache: 'no-store', headers: token ? { Authorization: `Bearer ${token}` } : {} })
+          .catch(() => { throw Object.assign(new Error('network'), { kind: 'network' }); });
+        if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { kind: response.status === 401 ? 'auth' : 'server' });
+        file.gzip = /gzip|br|deflate/i.test(response.headers.get('content-encoding') || '');
+        file.total = Number(response.headers.get('content-length')) || 0;
+        report();
+        let text = '';
+        if (response.body?.getReader) {
+          const reader = response.body.getReader(), decoder = new TextDecoder();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            file.raw += value.byteLength;
+            text += decoder.decode(value, { stream: true });
+            report();
+          }
+          text += decoder.decode();
+        } else text = await response.text();
+        if (!file.total) file.total = file.raw || text.length;
+        const result = JSON.parse(text || '{}');
+        values[file.path] = result.value ?? null;
+        if (seq === null || result.seq < seq) seq = result.seq;
+        file.done = true;
+        const zipped = files.filter(item => item.done && item.gzip && item.total);
+        if (zipped.length) ratio = Math.max(2, zipped.reduce((sum, item) => sum + item.raw, 0) / zipped.reduce((sum, item) => sum + item.total, 0));
+        report();
+      }));
+      return { values, seq };
     }
   }
 

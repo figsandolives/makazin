@@ -834,7 +834,7 @@ function showLogin(message = '') {
       setTimeout(() => { el.classList.remove('open', 'leaving'); el.innerHTML = ''; html.classList.remove('logged-out'); }, 450);
       const waiters = loginWaiters; loginWaiters = [];
       if (waiters.length) waiters.forEach(w => w(code));
-      else startApp();
+      else enterApp();
     } catch (ex) {
       err.textContent = t(ex.kind === 'network' ? 'loginNetwork' : ex.kind === 'nouser' ? 'loginNoUser' : 'loginInvalid');
       input.value = ''; input.focus();
@@ -869,6 +869,115 @@ function watchBadges() {
   });
 }
 
+/* ---------- System data download (local-copy.js) ---------- */
+// The copy saved on this device opens at once; without one, the user downloads it first.
+async function enterApp() {
+  if (LIVE.copySupported && !LIVE.copyReady()) {
+    const opened = await LIVE.openCopy().catch(() => false);
+    if (!opened) await showPreload();
+  }
+  startApp();
+}
+
+const fmtSize = b => (b >= 1048576 ? `${fmtNum(b / 1048576, 1, 1)} ${t('pl.mb')}` : `${fmtNum(Math.max(b, 0) / 1024, 0, 0)} ${t('pl.kb')}`);
+function fmtLeft(s) {
+  if (!isFinite(s)) return '…';
+  if (s < 1) return t('pl.lessSec');
+  s = Math.ceil(s);
+  return s < 60 ? `${s} ${t('pl.sec')}` : `${Math.floor(s / 60)} ${t('pl.min')} ${s % 60 ? `${s % 60} ${t('pl.sec')}` : ''}`.trim();
+}
+
+function showPreload() {
+  return new Promise(resolve => {
+    const el = document.createElement('div');
+    el.className = 'pl-wrap'; el.id = 'preload';
+    el.innerHTML = `
+      <div class="pl-box" role="dialog" aria-modal="true" aria-labelledby="plT">
+        <span class="logo pl-logo">${LOGO}</span>
+        <h1 id="plT">${t('pl.title')}</h1>
+        <p class="pl-sub">${t('pl.sub')}</p>
+        <div class="pl-stage" id="plStage">
+          <button class="btn btn-primary pl-btn" id="plBtn">${icon('download')}<span>${t('pl.btn')}</span></button>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => $('#plBtn', el).focus());
+    const stage = $('#plStage', el);
+
+    // «انتظر قليلاً» and «جارٍ تحميل بياناتك...» take turns: in, 2 s, out, the other one in
+    let msgTimer = 0;
+    function rotate(box) {
+      const lines = [t('pl.wait'), t('pl.loading')];
+      let i = 0;
+      const show = () => {
+        if (!box.isConnected) return;
+        box.textContent = lines[i];
+        const a = box.animate([{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'none' }], { duration: 450, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'both' });
+        msgTimer = setTimeout(() => {
+          box.animate([{ opacity: 1, transform: 'none', filter: 'none' }, { opacity: 0, transform: 'translateY(-10px)', filter: 'blur(4px)' }], { duration: 380, easing: 'ease-in', fill: 'both' })
+            .onfinish = () => { i = (i + 1) % lines.length; show(); };
+        }, 2000 + 450);
+        return a;
+      };
+      show();
+    }
+
+    async function start() {
+      const btn = $('#plBtn', el);
+      await btn.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92)' }], { duration: 220, easing: 'ease-in', fill: 'both' }).finished;
+      stage.innerHTML = `
+        <div class="pl-progress">
+          <div class="pl-head"><b id="plPct">0%</b><span id="plLoaded"></span></div>
+          <div class="pl-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="plBar"><i id="plFill"></i></div>
+          <div class="pl-line"><span>${t('pl.remaining')} <b id="plRemain">…</b></span><span>${t('pl.timeLeft')} <b id="plTime">…</b></span></div>
+          <p class="pl-msg" id="plMsg" aria-live="polite"></p>
+        </div>`;
+      stage.firstElementChild.animate([{ opacity: 0, transform: 'translateY(8px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.22,1,.36,1)' });
+      rotate($('#plMsg', el));
+      const t0 = performance.now();
+      let rate = 0, lastDraw = 0;
+      const draw = p => {
+        const now = performance.now();
+        if (now - lastDraw < 120 && p.done < p.count) return;
+        lastDraw = now;
+        const pct = p.total ? Math.min(100, Math.floor(p.loaded / p.total * 100)) : 0;
+        $('#plFill', el).style.width = `${pct}%`;
+        $('#plBar', el).setAttribute('aria-valuenow', pct);
+        $('#plPct', el).textContent = `${pct}%`;
+        const secs = (now - t0) / 1000, speed = secs > .4 ? p.loaded / secs : 0;
+        rate = rate ? rate * .7 + speed * .3 : speed;
+        $('#plLoaded', el).innerHTML = `<b>${fmtSize(p.loaded)}</b> ${t('pl.of')} ${fmtSize(p.total)}`;
+        $('#plRemain', el).textContent = fmtSize(p.total - p.loaded);
+        $('#plTime', el).textContent = p.done === p.count ? t('pl.lessSec') : rate ? fmtLeft((p.total - p.loaded) / rate) : '…';
+      };
+      try {
+        await LIVE.downloadCopy(draw);
+        clearTimeout(msgTimer);
+        $('#plFill', el).style.width = '100%';
+        $('#plPct', el).textContent = '100%';
+        $('#plRemain', el).textContent = fmtSize(0);
+        $('#plTime', el).textContent = '-';
+        const msg = $('#plMsg', el);
+        msg.getAnimations().forEach(a => a.cancel());
+        msg.innerHTML = `${icon('check')}${t('pl.done')}`;
+        msg.classList.add('ok');
+        msg.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+        setTimeout(() => {
+          el.classList.add('leaving');
+          setTimeout(() => el.remove(), 450);
+          resolve();
+        }, 700);
+      } catch (e) {
+        clearTimeout(msgTimer);
+        stage.innerHTML = `<p class="pl-err" role="alert">${icon('alert')}${t(e.kind === 'network' ? 'pl.netFailed' : 'pl.failed')}</p>
+          <button class="btn btn-primary pl-btn" id="plBtn">${icon('refresh')}<span>${t('pl.retry')}</span></button>`;
+        $('#plBtn', el).addEventListener('click', start, { once: true });
+      }
+    }
+    $('#plBtn', el).addEventListener('click', start, { once: true });
+  });
+}
+
 function startApp() {
   renderSidebar();
   go();
@@ -879,5 +988,5 @@ function startApp() {
 
 /* Boot */
 delete NAV_BADGE['pending-movements'];
-LIVE.restore().then(user => (user ? startApp() : showLogin()));
+LIVE.restore().then(user => (user ? enterApp() : showLogin()));
 requestAnimationFrame(() => html.classList.add('ready'));

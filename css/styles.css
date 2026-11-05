@@ -969,6 +969,34 @@ input[type="date"] { direction: ltr; text-align: start; }
 [dir="rtl"] .lg-btn:hover .ic.flip { transform: scaleX(-1) translateX(4px); }
 .lg-mock { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 18px; padding: 10px 12px; border-radius: 12px; font-size: .82rem; color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); }
 .lg-mock .ic { width: 16px; height: 16px; }
+
+/* System data download (local-copy.js): a plain white page */
+.pl-wrap { position: fixed; inset: 0; z-index: 130; display: grid; place-items: center; padding: 16px; background: var(--surface-solid); }
+.pl-wrap.leaving { animation: lgOut 450ms var(--ease) forwards; }
+.pl-box { width: min(460px, 100%); text-align: center; display: grid; justify-items: center; animation: rise 700ms var(--spring) both; }
+.pl-logo { width: 60px; height: 60px; margin-bottom: 22px; animation: float 5s ease-in-out infinite; }
+.pl-box h1 { font-size: 1.5rem; letter-spacing: -.02em; }
+.pl-sub { color: var(--text-3); margin: 6px 0 28px; }
+.pl-stage { width: 100%; min-height: 150px; display: grid; justify-items: center; align-content: start; }
+.pl-btn { min-width: 200px; height: 52px; font-size: 1.05rem; border-radius: 14px; }
+.pl-progress { width: 100%; display: grid; gap: 12px; }
+.pl-head { display: flex; align-items: baseline; justify-content: space-between; }
+.pl-head b { font-size: 1.35rem; font-variant-numeric: tabular-nums; color: var(--primary); }
+.pl-bar { position: relative; height: 10px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+.pl-bar i { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--primary), var(--primary-2)); transition: width 280ms var(--ease); overflow: hidden; }
+.pl-bar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent); transform: translateX(-100%); animation: plShine 1.4s ease-in-out infinite; }
+[dir="rtl"] .pl-bar i { background: linear-gradient(-90deg, var(--primary), var(--primary-2)); }
+@keyframes plShine { to { transform: translateX(100%); } }
+.pl-head span { color: var(--text-3); font-size: .86rem; font-variant-numeric: tabular-nums; }
+.pl-head span b { color: var(--text); }
+.pl-line { display: flex; justify-content: space-between; gap: 12px; color: var(--text-3); font-size: .84rem; }
+.pl-line b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pl-msg { min-height: 26px; margin-top: 8px; font-weight: 600; color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.pl-msg.ok { color: var(--primary); }
+.pl-msg .ic { width: 18px; height: 18px; }
+.pl-err { display: inline-flex; align-items: center; gap: 8px; color: var(--danger); margin-bottom: 14px; font-weight: 600; }
+.pl-err .ic { width: 18px; height: 18px; }
+@media (prefers-reduced-motion: reduce) { .pl-bar i::after, .pl-logo { animation: none; } }
 .btn.loading { pointer-events: none; }
 .btn.loading > * { opacity: 0; }
 .btn.loading::before { content: ''; position: absolute; width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid currentColor; border-inline-end-color: transparent; animation: spin 700ms linear infinite; }

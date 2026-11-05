@@ -870,3 +870,19 @@ Object.assign(I18N.en, {
   'dj.inv': 'Invoice', 'dj.pay': 'Payment', 'dj.value': 'Value', 'dj.courier': 'Courier', 'dj.time': 'Delivery time', 'dj.when': 'Delivery on',
   'dj.am': 'AM', 'dj.pm': 'PM', 'dj.noon': 'noon', 'dj.thanks': '***Thank you***'
 });
+
+/* System data download (local-copy.js) */
+Object.assign(I18N.ar, {
+  'pl.title': 'تحميل بيانات النظام', 'pl.sub': 'يرجى الضغط على تحميل لتحميل بيانات النظام', 'pl.btn': 'تحميل',
+  'pl.wait': 'انتظر قليلاً', 'pl.loading': 'جارٍ تحميل بياناتك...', 'pl.done': 'اكتمل التحميل',
+  'pl.loaded': 'تم تحميل', 'pl.remaining': 'المتبقي', 'pl.timeLeft': 'الوقت المتبقي', 'pl.of': 'من',
+  'pl.mb': 'م.ب', 'pl.kb': 'ك.ب', 'pl.sec': 'ث', 'pl.min': 'د', 'pl.lessSec': 'أقل من ثانية',
+  'pl.failed': 'تعذر تحميل البيانات من السيرفر', 'pl.netFailed': 'تعذر الاتصال بالسيرفر، تأكد من الإنترنت', 'pl.retry': 'إعادة المحاولة'
+});
+Object.assign(I18N.en, {
+  'pl.title': 'Download system data', 'pl.sub': 'Press Download to load the system data', 'pl.btn': 'Download',
+  'pl.wait': 'Please wait', 'pl.loading': 'Loading your data...', 'pl.done': 'Download complete',
+  'pl.loaded': 'Downloaded', 'pl.remaining': 'Remaining', 'pl.timeLeft': 'Time left', 'pl.of': 'of',
+  'pl.mb': 'MB', 'pl.kb': 'KB', 'pl.sec': 's', 'pl.min': 'min', 'pl.lessSec': 'under a second',
+  'pl.failed': 'Could not load the data from the server', 'pl.netFailed': 'Could not reach the server — check the internet', 'pl.retry': 'Try again'
+});
