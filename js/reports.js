@@ -133,7 +133,7 @@ PAGES.reports = view => {
   const today = rpIso(new Date());
   const st = (S.rp ||= {
     view: 'dashboard', period: 'day', date: today, cmp: false, cmpVals: { day: '', week: '', month: '' }, branch: 'all',
-    md: { metric: 'orders', branch: 'all', cashier: 'all', customer: 'all', q: '' },
+    md: { metric: 'orders', branch: 'all', src: 'all', cashier: 'all', customer: 'all', q: '' },
     sales: { from: '', to: '', q: '', cat: 'all', sel: new Set(), auto: true },
     det: { productId: null, branch: 'all' },
     cs: { from: '', to: '', branch: 'all' }, csd: { cashierId: null },
@@ -207,7 +207,7 @@ PAGES.reports = view => {
   const periodF = () => { const r = rpRange(st.period, st.date); return { from: rpIso(new Date(r.start)), to: rpIso(new Date(r.end)) }; };
   /* Open the invoices behind a card, a chart point or a row of the dashboard */
   function drill(kind, label, val = '', metric = '') {
-    Object.assign(st.md, { metric: metric || (kind === 'all' || kind === 'fee' ? 'revenue' : 'orders'), branch: kind === 'branch' ? val : st.branch, cashier: 'all', customer: kind === 'cust' ? val : 'all', q: '', pick: { kind, val: String(val), label } });
+    Object.assign(st.md, { metric: metric || (kind === 'all' || kind === 'fee' ? 'revenue' : 'orders'), branch: kind === 'branch' ? val : st.branch, cashier: 'all', src: 'all', customer: kind === 'cust' ? val : 'all', q: '', pick: { kind, val: String(val), label } });
     go('metricDetails');
   }
 
@@ -451,7 +451,7 @@ PAGES.reports = view => {
   /* ---- orders / sales of the dashboard period ---- */
   V.metricDetails = {
     title: () => (st.md.pick && st.md.pick.label) || (st.md.metric === 'revenue' ? t('rp.revenue') : t('o.kCount')),
-    shell: () => shell(V.metricDetails.title(), '', searchF('q', t('rp.searchInvoice'), st.md.q) + selF('branch', t('o.branch')) + selF('cashier', t('o.cashier')) + selF('customer', t('o.customer')), { k: 5 }),
+    shell: () => shell(V.metricDetails.title(), '', searchF('q', t('rp.searchInvoice'), st.md.q) + selF('branch', t('o.branch')) + selF('src', t('rp.src')), { k: 5 }),
     data() {
       const range = rpRange(st.period, st.date), f = st.md, q = normQ(f.q), pick = f.pick || { kind: 'all' };
       const inPeriod = pick.kind === 'cancelled'
@@ -465,7 +465,7 @@ PAGES.reports = view => {
         if (pick.kind === 'type') return oType(o) === pick.val;
         return true;
       };
-      const rows = inPeriod.filter(x => match(x) && (f.branch === 'all' || x.o.branchId === f.branch) && (f.cashier === 'all' || String(x.o.cashierId || '') === f.cashier) && (f.customer === 'all' || rpCustKey(x.o) === f.customer))
+      const rows = inPeriod.filter(x => match(x) && (f.branch === 'all' || x.o.branchId === f.branch) && (!f.src || f.src === 'all' || (f.src === 'online') === !!x.o.online) && (f.customer === 'all' || rpCustKey(x.o) === f.customer))
         .map(({ o, ts }) => ({ o, ts, num: oNum(o), cust: oCustName(o), phone: oPhone(o), products: rpProducts(o), fee: oCancelled(o) ? rpNum(o.deliveryFee ?? o.deliveryPrice) : oFee(o), total: rpNum(o.total), net: oCancelled(o) ? 0 : rpNet(o) }))
         .filter(r => !q || normQ(`${r.num} ${r.cust} ${r.phone}`).includes(q) || oProductText(r.o).includes(q)).sort((a, b) => b.ts - a.ts);
       const tot = rows.reduce((a, r) => ({ n: a.n + 1, products: a.products + r.products, fee: a.fee + r.fee, total: a.total + r.total, net: a.net + r.net }), { n: 0, products: 0, fee: 0, total: 0, net: 0 });
@@ -475,10 +475,11 @@ PAGES.reports = view => {
     cols: () => ['#', t('o.number'), t('c.date'), t('o.customer'), t('c.phone'), t('o.branch'), t('o.cashier'), t('rp.productsAmount'), t('o.fee'), t('o.grand')],
     draw() {
       const d = this.data(), f = st.md;
-      setHtml($('#rpSub', view), `${t('rp.period')}: ${rpRangeLabel(d.range)}${f.branch !== 'all' ? ` · ${esc(rpBranchName(f.branch))}` : ''}`);
+      // A customer opened from the dashboard's top customers is named under the title
+      const custName = f.customer === 'all' ? '' : ((d.customers.find(c => c[0] === f.customer) || [])[1] || '');
+      setHtml($('#rpSub', view), `${t('rp.period')}: ${rpRangeLabel(d.range)}${f.branch !== 'all' ? ` · ${esc(rpBranchName(f.branch))}` : ''}${custName ? ` · ${t('o.customer')}: <b>${esc(custName)}</b>` : ''}`);
       fill('branch', `<option value="all">${t('all')}</option>` + optsHtml(d.branches, f.branch));
-      fill('cashier', `<option value="all">${t('all')}</option>` + optsHtml(d.cashiers, f.cashier));
-      fill('customer', `<option value="all">${t('all')}</option>` + optsHtml(d.customers, f.customer));
+      fill('src', optsHtml([['all', t('all')], ['cashier', t('orders')], ['online', t('online-orders')]], f.src || 'all'));
       kpis([[t('rp.invoices'), d.tot.n, 'num', 'receipt', 'c1'], [t('rp.totalProducts'), d.tot.products, 'money', 'package', 'c2'], [t('rp.totalDelivery'), d.tot.fee, 'money', 'bike', 'c3'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c4'], [t('rp.totalNet'), d.tot.net, 'money', 'chart', 'c5']]);
       const c = this.cols();
       setHtml($('#rpHead', view), th(c.slice(0, 7).concat(c.slice(7).map(x => [x, 'end']))));
@@ -489,7 +490,7 @@ PAGES.reports = view => {
     export() { const c = this.cols(); excelOut(this.rows().map(r => Object.fromEntries(c.map((h, j) => [h, j >= 7 ? +r[j].toFixed(3) : r[j]]))), 'metric-details.xlsx'); },
     print() {
       const d = this.data(), f = st.md;
-      printDoc(this.title(), [[t('rp.period'), rpRangeLabel(d.range)], [t('o.branch'), f.branch === 'all' ? t('all') : rpBranchName(f.branch)], [t('o.cashier'), f.cashier === 'all' ? t('all') : ((LIVE.cache.cashiers || {})[f.cashier] || {}).name || f.cashier], [t('o.customer'), f.customer === 'all' ? t('all') : (d.customers.find(c => c[0] === f.customer) || [, f.customer])[1]]],
+      printDoc(this.title(), [[t('rp.period'), rpRangeLabel(d.range)], [t('o.branch'), f.branch === 'all' ? t('all') : rpBranchName(f.branch)], [t('rp.src'), f.src === 'cashier' ? t('orders') : f.src === 'online' ? t('online-orders') : t('all')], [t('o.customer'), f.customer === 'all' ? t('all') : (d.customers.find(c => c[0] === f.customer) || [, f.customer])[1]]],
         this.cols(), this.rows().map(r => r.map((v, j) => (j >= 7 ? moneyPlain(v) : String(v)))),
         [[t('rp.invoices'), String(d.tot.n)], [t('rp.totalProducts'), moneyPlain(d.tot.products)], [t('rp.totalDelivery'), moneyPlain(d.tot.fee)], [t('rp.totalSales'), moneyPlain(d.tot.total)], [t('rp.totalNet'), moneyPlain(d.tot.net)]]);
     }
@@ -920,7 +921,7 @@ PAGES.reports = view => {
       draw(); return;
     }
     const metric = e.target.closest('[data-metric]');
-    if (metric) { Object.assign(st.md, { metric: metric.dataset.metric, branch: st.branch, cashier: 'all', customer: 'all', q: '', pick: null }); go('metricDetails'); return; }
+    if (metric) { Object.assign(st.md, { metric: metric.dataset.metric, branch: st.branch, cashier: 'all', src: 'all', customer: 'all', q: '', pick: null }); go('metricDetails'); return; }
     const dr = e.target.closest('[data-drill]');
     if (dr) { drill(dr.dataset.drill, dr.dataset.label, dr.dataset.val); return; }
     const open = e.target.closest('[data-open]');
