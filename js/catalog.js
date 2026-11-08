@@ -59,13 +59,15 @@ function keepOrReplaceCode(raw, prefix, editId) {
 }
 /* Every product and material gets its own code: old records with no code, and the later
    copies of a code used twice, get a new one (the oldest record keeps the code it has). */
-let codesFixing = false;
+let codesFixing = false, codesChecked = false;
 async function fixItemCodes() {
-  if (codesFixing) return;
+  if (codesFixing || codesChecked) return;
   codesFixing = true;
   try {
+    // From the server itself: the device copy may still hold codes from before the last fix
+    const [prd, mat] = await Promise.all([LIVE.fresh('products'), LIVE.fresh('stockMaterials')]);
     const all = [];
-    [['products', 'FG'], ['stockMaterials', 'SK']].forEach(([path, prefix]) => Object.entries(LIVE.cache[path] || {})
+    [['products', 'FG', prd], ['stockMaterials', 'SK', mat]].forEach(([path, prefix, list]) => Object.entries(list || {})
       .forEach(([id, it]) => { if (it && typeof it === 'object') all.push({ path, prefix, id, it }); }));
     all.sort((a, b) => createdSort(a.id, a.it) - createdSort(b.id, b.it));
     const used = new Set(), todo = [];
@@ -73,6 +75,7 @@ async function fixItemCodes() {
       const c = String(x.it.code || '').trim().toUpperCase();
       if (c && !used.has(c)) used.add(c); else todo.push(x);
     });
+    codesChecked = true;
     if (!todo.length) return;
     const up = {};
     todo.forEach(x => { up[`${x.path}/${x.id}/code`] = fixedCode(x.prefix, used); });

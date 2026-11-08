@@ -186,6 +186,15 @@ const LIVE = (() => {
   let writeHook = null;
   live.setWriteHook = fn => { writeHook = fn; };
   live.update = updates => connect().ref().update(writeHook ? writeHook(updates) : updates);
+  /* Reads a collection straight from the server, not from the copy saved on this device
+     (which can be behind for a few seconds after the page opens) */
+  live.fresh = async path => {
+    connect();
+    if (MOCK) return JSON.parse(JSON.stringify(cache[path] || {}));
+    const c = FigsRTDB.client();
+    const r = await c.request('GET', `${c.path}/value?path=${encodeURIComponent(path)}`);
+    return (r && r.value) || {};
+  };
   live.now = () => ({ '.sv': 'timestamp' });
   live.increment = n => ({ '.sv': { increment: Number(n) || 0 } });
   /* Next number of a shared counter (same as the old page's generateCounter) */
