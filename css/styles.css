@@ -2056,3 +2056,14 @@ section.kd-chips .kd-chip b { font-size: 1.3rem; }
   .dt.compact th { padding: 7px 9px; }
   .date-field input { height: 36px; }
 }
+
+/* Products / materials: Excel and PDF menus (stock levels · all data) */
+.ix-dd .btn .ic:last-child { width: 14px; height: 14px; opacity: .6; }
+.ix-dd .dd-menu { width: 250px; }
+.ix-item { height: auto; padding-block: 8px; align-items: flex-start; text-align: start; }
+.ix-item > span { display: flex; flex-direction: column; gap: 1px; }
+.ix-item b { font-weight: 600; color: var(--text); }
+.ix-item small { color: var(--text-3); font-size: .74rem; }
+.ph:has(.dd.open) { position: relative; z-index: 40; }
+[dir="rtl"] .ix-dd .dd-menu { inset-inline-end: auto; inset-inline-start: 0; transform-origin: top right; }
+[dir="ltr"] .ix-dd .dd-menu { inset-inline-end: auto; inset-inline-start: 0; transform-origin: top left; }

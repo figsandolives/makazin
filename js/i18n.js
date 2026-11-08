@@ -270,7 +270,7 @@ Object.assign(I18N.en, { 'sp.typeProduct': 'Product', 'sp.typeMaterial': 'Materi
 
 /* Products / stock materials / their categories */
 Object.assign(I18N.ar, {
-  'it.code': 'الرمز', 'it.price': 'سعر البيع', 'it.cost': 'التكلفة', 'it.unit': 'الوحدة', 'it.stock': 'الرصيد', 'it.category': 'التصنيف', 'it.storage': 'مكان التخزين', 'it.origin': 'بلد المنشأ',
+  'it.code': 'الرمز', 'it.price': 'سعر البيع', 'it.cost': 'التكلفة', 'it.unit': 'الوحدة', 'it.stock': 'الكمية في المخزون', 'it.category': 'التصنيف', 'it.storage': 'مكان التخزين', 'it.origin': 'بلد المنشأ',
   'it.min': 'الحد الأدنى', 'it.reorder': 'نقطة إعادة الطلب', 'it.max': 'الحد الأعلى', 'it.barcode': 'الباركود', 'it.barcodeValue': 'قيمة الباركود', 'it.generate': 'إنشاء',
   'it.nameAr': 'الاسم بالعربي', 'it.nameEn': 'الاسم بالإنجليزي', 'it.opening': 'الرصيد الافتتاحي', 'it.openingLocked': 'لا يتغير بعد الإضافة', 'it.chooseUnit': 'اختر الوحدة',
   'it.unitDef': 'تعريف الوحدة', 'it.unitDefQty': 'الكمية', 'it.unitDefUnit': 'الوحدة', 'it.unitDefBoth': 'أدخل الكمية والوحدة معاً، أو اتركهما فارغين',
@@ -278,7 +278,7 @@ Object.assign(I18N.ar, {
   'it.preview': 'معاينة الباركود', 'it.downloadBc': 'تحميل الباركود', 'it.bcInvalid': 'الباركود يحتوي على رموز غير مدعومة', 'it.copied': 'تم نسخ الباركود', 'it.clickCopy': 'اضغط للنسخ',
   'it.allCats': 'كل التصنيفات', 'it.allLocs': 'كل أماكن التخزين', 'it.allOrigins': 'كل بلدان المنشأ', 'it.perPage': 'لكل صفحة', 'it.sort': 'الفرز',
   'it.sort.default': 'بدون فرز', 'it.sort.salesDesc': 'الأعلى مبيعاً', 'it.sort.salesAsc': 'الأقل مبيعاً', 'it.sort.incompleteInfo': 'منتجات ناقصة معلومات', 'it.loadingSales': 'جاري تحميل المبيعات…',
-  'it.exportSel': 'تحميل المحدد', 'it.bcZip': 'تحميل الباركودات', 'it.import': 'إضافة من إكسل', 'it.selectFirst': 'حدد أصنافاً من الجدول أولاً', 'it.selectAll': 'تحديد كل الصفحة',
+  'it.exportSel': 'تحميل المحدد', 'ix.excel': 'إكسل', 'it.codesFixed': 'تم إعطاء رمز جديد لـ {n} صنف', 'ix.pdf': 'طباعة PDF', 'ix.levels': 'مستويات المخزون', 'ix.all': 'كل البيانات', 'ix.levelsSub': 'الرمز والاسم والكمية وحدود الطلب', 'ix.allSub': 'كل أعمدة الجدول', 'ix.no': 'م', 'ix.nameAr': 'اسم المنتج بالعربي', 'ix.nameEn': 'اسم المنتج بالإنجليزي', 'ix.min': 'أقل كمية للطلب', 'ix.max': 'أقصى كمية', 'ix.count': 'عدد الأصناف', 'ix.filters': 'الفلاتر', 'ix.noFilter': 'بدون فلتر', 'ix.empty': 'لا توجد نتائج للتصدير', 'ix.search': 'البحث', 'ix.catsOfLoc': 'التصنيفات المتعلقة بمكان التخزين ({x})', 'ix.locsOfCat': 'أماكن التخزين المتعلقة بالتصنيف ({x})', 'ix.levelsTitle': 'مستويات المخزون', 'ix.allTitle': 'بيانات الأصناف', 'it.bcZip': 'تحميل الباركودات', 'it.import': 'إضافة من إكسل', 'it.selectFirst': 'حدد أصنافاً من الجدول أولاً', 'it.selectAll': 'تحديد كل الصفحة',
   'it.items': 'صنف', 'it.kCritical': 'وصلت نقطة إعادة الطلب', 'it.kWarning': 'قريبة من نقطة الطلب', 'it.kCats': 'التصنيفات', 'it.criticalTip': 'الرصيد عند نقطة إعادة الطلب أو أقل', 'it.warningTip': 'الرصيد قريب من نقطة إعادة الطلب',
   'it.searchPh': 'ابحث بالاسم أو الرمز أو الباركود…', 'it.deleteNote': 'سيُحذف نهائياً من القائمة.', 'it.goneElsewhere': 'حُذف هذا الصنف من جهاز آخر', 'it.libFail': 'تعذر تحميل المكتبة، تحقق من الاتصال',
   'it.product.new': 'منتج جديد', 'it.product.edit': 'تعديل منتج', 'it.product.sub': 'المنتجات مع أسعارها وأرصدتها وباركوداتها', 'it.product.none': 'لا توجد منتجات', 'it.product.noneSub': 'أضف أول منتج أو استورد من إكسل',
@@ -301,7 +301,7 @@ Object.assign(I18N.ar, {
   'pc.material.noFree': 'كل المواد مصنفة في أقسام أخرى', 'pc.material.noFreeSub': 'تظهر هنا المواد بدون تصنيف فقط', 'pc.material.deleteNote': 'ستُحذف أقسامه الفرعية أيضاً، وتبقى المواد بدون تصنيف.'
 });
 Object.assign(I18N.en, {
-  'it.code': 'Code', 'it.price': 'Sale price', 'it.cost': 'Cost', 'it.unit': 'Unit', 'it.stock': 'Stock', 'it.category': 'Category', 'it.storage': 'Storage', 'it.origin': 'Origin',
+  'it.code': 'Code', 'it.price': 'Sale price', 'it.cost': 'Cost', 'it.unit': 'Unit', 'it.stock': 'Stock qty', 'it.category': 'Category', 'it.storage': 'Storage', 'it.origin': 'Origin',
   'it.min': 'Min', 'it.reorder': 'Reorder point', 'it.max': 'Max', 'it.barcode': 'Barcode', 'it.barcodeValue': 'Barcode value', 'it.generate': 'Generate',
   'it.nameAr': 'Arabic name', 'it.nameEn': 'English name', 'it.opening': 'Opening balance', 'it.openingLocked': 'Fixed once the item is added', 'it.chooseUnit': 'Choose a unit',
   'it.unitDef': 'Unit definition', 'it.unitDefQty': 'Quantity', 'it.unitDefUnit': 'Unit', 'it.unitDefBoth': 'Enter both quantity and unit, or leave both empty',
@@ -309,7 +309,7 @@ Object.assign(I18N.en, {
   'it.preview': 'Barcode preview', 'it.downloadBc': 'Download barcode', 'it.bcInvalid': 'The barcode has unsupported characters', 'it.copied': 'Barcode copied', 'it.clickCopy': 'Click to copy',
   'it.allCats': 'All categories', 'it.allLocs': 'All storage locations', 'it.allOrigins': 'All origins', 'it.perPage': 'Per page', 'it.sort': 'Sort',
   'it.sort.default': 'No sorting', 'it.sort.salesDesc': 'Best selling', 'it.sort.salesAsc': 'Least selling', 'it.sort.incompleteInfo': 'Incomplete info', 'it.loadingSales': 'Loading sales…',
-  'it.exportSel': 'Download selected', 'it.bcZip': 'Download barcodes', 'it.import': 'Import from Excel', 'it.selectFirst': 'Select items in the table first', 'it.selectAll': 'Select the whole page',
+  'it.exportSel': 'Download selected', 'ix.excel': 'Excel', 'it.codesFixed': 'New codes given to {n} items', 'ix.pdf': 'Print PDF', 'ix.levels': 'Stock levels', 'ix.all': 'All data', 'ix.levelsSub': 'Code, name, quantity and order limits', 'ix.allSub': 'Every column of the table', 'ix.no': '#', 'ix.nameAr': 'Arabic name', 'ix.nameEn': 'English name', 'ix.min': 'Min order qty', 'ix.max': 'Max qty', 'ix.count': 'Items', 'ix.filters': 'Filters', 'ix.noFilter': 'No filter', 'ix.empty': 'Nothing to export', 'ix.search': 'Search', 'ix.catsOfLoc': 'Categories in storage location ({x})', 'ix.locsOfCat': 'Storage locations for category ({x})', 'ix.levelsTitle': 'Stock levels', 'ix.allTitle': 'Item data', 'it.bcZip': 'Download barcodes', 'it.import': 'Import from Excel', 'it.selectFirst': 'Select items in the table first', 'it.selectAll': 'Select the whole page',
   'it.items': 'items', 'it.kCritical': 'At reorder point', 'it.kWarning': 'Near reorder point', 'it.kCats': 'Categories', 'it.criticalTip': 'Stock at or below the reorder point', 'it.warningTip': 'Stock close to the reorder point',
   'it.searchPh': 'Search by name, code or barcode…', 'it.deleteNote': 'It will be removed from the list for good.', 'it.goneElsewhere': 'This item was deleted on another device', 'it.libFail': 'Could not load the library — check the connection',
   'it.product.new': 'New product', 'it.product.edit': 'Edit product', 'it.product.sub': 'Products with their prices, stock and barcodes', 'it.product.none': 'No products yet', 'it.product.noneSub': 'Add the first product or import from Excel',

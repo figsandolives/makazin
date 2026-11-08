@@ -57,6 +57,31 @@ function keepOrReplaceCode(raw, prefix, editId) {
   const used = usedItemCodes(editId);
   return used.has(code.toUpperCase()) ? fixedCode(prefix, used) : code;
 }
+/* Every product and material gets its own code: old records with no code, and the later
+   copies of a code used twice, get a new one (the oldest record keeps the code it has). */
+let codesFixing = false;
+async function fixItemCodes() {
+  if (codesFixing) return;
+  codesFixing = true;
+  try {
+    const all = [];
+    [['products', 'FG'], ['stockMaterials', 'SK']].forEach(([path, prefix]) => Object.entries(LIVE.cache[path] || {})
+      .forEach(([id, it]) => { if (it && typeof it === 'object') all.push({ path, prefix, id, it }); }));
+    all.sort((a, b) => createdSort(a.id, a.it) - createdSort(b.id, b.it));
+    const used = new Set(), todo = [];
+    all.forEach(x => {
+      const c = String(x.it.code || '').trim().toUpperCase();
+      if (c && !used.has(c)) used.add(c); else todo.push(x);
+    });
+    if (!todo.length) return;
+    const up = {};
+    todo.forEach(x => { up[`${x.path}/${x.id}/code`] = fixedCode(x.prefix, used); });
+    const keys = Object.keys(up);
+    for (let i = 0; i < keys.length; i += 200) await LIVE.update(Object.fromEntries(keys.slice(i, i + 200).map(k => [k, up[k]])));
+    toast(t('it.codesFixed').replace('{n}', fmtNum(todo.length)));
+  } catch (e) { console.warn('item codes', e); }
+  finally { codesFixing = false; }
+}
 const newBarcode = () => Math.floor(100000000000 + Math.random() * 900000000000).toString();
 function drawBarcode(canvas, value, opts) {
   try { JsBarcode(canvas, value, { format: 'CODE128', ...opts }); return true; } catch (e) { return false; }
@@ -160,7 +185,9 @@ function itemsPage(view, kind) {
   const COLS = isP ? 15 : 14;
 
   view.innerHTML = `
-    ${pageHeader(C.route, `<button class="btn btn-ghost" data-it="export" disabled>${icon('download')}<span>${t('it.exportSel')}</span><em class="sel-n"></em></button>
+    ${pageHeader(C.route, `${['xlsx', 'pdf'].map(f => `<div class="dd ix-dd"><button class="btn btn-ghost" data-act="dd" aria-haspopup="menu">${icon(f === 'pdf' ? 'printer' : 'download')}<span>${t(f === 'pdf' ? 'ix.pdf' : 'ix.excel')}</span><em class="sel-n ix-n"></em>${icon('chevDown')}</button>
+        <div class="dd-menu" role="menu">${['levels', 'all'].map(m => `<button class="dd-item ix-item" role="menuitem" data-ix="${f}:${m}">${icon(m === 'levels' ? 'layers' : 'list')}<span><b>${t('ix.' + m)}</b><small>${t('ix.' + m + 'Sub')}</small></span></button>`).join('')}</div></div>`).join('')}
+      <button class="btn btn-ghost" data-it="export" disabled>${icon('download')}<span>${t('it.exportSel')}</span><em class="sel-n"></em></button>
       <button class="btn btn-ghost" data-it="zip" disabled>${icon('barcode')}<span>${t('it.bcZip')}</span><em class="sel-n"></em></button>
       <button class="btn btn-ghost" data-it="import">${icon('upload')}<span>${t('it.import')}</span></button>
       <button class="btn btn-primary" data-it="new">${icon('plus')}<span>${K('new')}</span></button>`, K('sub'))}
@@ -169,9 +196,9 @@ function itemsPage(view, kind) {
     <section class="card table-card" data-anim>
       <div class="toolbar it-tools">
         <label class="search-field">${icon('search')}<input type="search" id="itQ" placeholder="${t('it.searchPh')}" value="${esc(st.q)}" autocomplete="off"></label>
-        <div class="select tb-select"><select id="itBranch" aria-label="${t('c.branch')}"></select>${icon('chevDown')}</div>
-        <div class="select tb-select"><select id="itCat" aria-label="${t('it.category')}"></select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="itLoc" aria-label="${t('it.storage')}"></select>${icon('chevDown')}</div>
+        <div class="select tb-select"><select id="itCat" aria-label="${t('it.category')}"></select>${icon('chevDown')}</div>
+        <div class="select tb-select"><select id="itBranch" aria-label="${t('c.branch')}"></select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="itOrigin" aria-label="${t('it.origin')}"></select>${icon('chevDown')}</div>
         ${isP ? `<div class="select tb-select"><select id="itSort" aria-label="${t('it.sort')}">${['default', 'salesDesc', 'salesAsc', 'incompleteInfo'].map(k => `<option value="${k}" ${st.sort === k ? 'selected' : ''}>${t('it.sort.' + k)}</option>`).join('')}</select>${icon('chevDown')}</div>` : ''}
         <label class="per-field"><small>${t('it.perPage')}</small><span class="select mini"><select id="itPer">${[10, 50, 100].map(n => `<option ${st.per === n ? 'selected' : ''}>${n}</option>`).join('')}</select>${icon('chevDown')}</span></label>
@@ -284,11 +311,22 @@ function itemsPage(view, kind) {
     if (st.alert) setHtml(bar, `<div class="toolbar"><button class="btn btn-ghost" data-it="back">${icon('chevRight', 'flip')}<span>${t('pt.back')}</span></button>
       <h2 class="pt-title">${t(st.alert === 'critical' ? 'it.kCritical' : 'it.kWarning')}<small>${st.alert === 'critical' ? crit : warn} ${t('it.items')}</small></h2></div>`);
     setHtml($('#itBranch', view), `<option value="all">${t('allBranches')}</option>` + optsHtml(sortedOpts(LIVE.cache.branches).map(([id]) => [id, branchLabel(id)]), st.branch));
-    setHtml($('#itCat', view), `<option value="all">${t('it.allCats')}</option>` + optsHtml(sortedOpts(LIVE.cache[C.cats]), st.cat));
-    setHtml($('#itLoc', view), `<option value="all">${t('it.allLocs')}</option>` + optsHtml([...sortedOpts(LIVE.cache.storageLocations), [LOC_NONE, t('sl.noLocation')]], st.loc));
+    // Location and category narrow each other: each list keeps only what the other choice holds
+    const all = Object.entries(items).filter(([, it]) => it && typeof it === 'object');
+    const inLoc = st.loc === 'all' ? all : all.filter(([id]) => inLocation(kind, id, st.loc));
+    const catIds = new Set(inLoc.map(([, it]) => it.categoryId).filter(Boolean));
+    const catPairs = sortedOpts(LIVE.cache[C.cats]).filter(([id]) => st.loc === 'all' || catIds.has(id) || id === st.cat);
+    const inCat = st.cat === 'all' ? all : all.filter(([, it]) => it.categoryId === st.cat);
+    const locPairs = [...sortedOpts(LIVE.cache.storageLocations), [LOC_NONE, t('sl.noLocation')]]
+      .filter(([loc]) => st.cat === 'all' || loc === st.loc || inCat.some(([id]) => inLocation(kind, id, loc)));
+    const catAll = st.loc === 'all' ? t('it.allCats') : t('ix.catsOfLoc').replace('{x}', locName(st.loc));
+    const locAll = st.cat === 'all' ? t('it.allLocs') : t('ix.locsOfCat').replace('{x}', nameOf((LIVE.cache[C.cats] || {})[st.cat]) || '');
+    setHtml($('#itCat', view), `<option value="all">${esc(catAll)}</option>` + optsHtml(catPairs, st.cat));
+    setHtml($('#itLoc', view), `<option value="all">${esc(locAll)}</option>` + optsHtml(locPairs, st.loc));
     setHtml($('#itOrigin', view), `<option value="all">${t('it.allOrigins')}</option>` + optsHtml(sortedOpts(LIVE.cache.countryOrigins), st.origin));
     if (needsSales() && !LIVE.loaded(['orders'])) { setHtml(body, skeletonRows(6, COLS)); setHtml($('#itPager', view), `<span class="pager-info">${t('it.loadingSales')}</span>`); return; }
     const rows = list();
+    $$('.ix-n', view).forEach(n => { n.textContent = fmtNum(rows.length); });
     const per = st.per;
     setHtml($('#itPager', view), pagerHtml(st, rows.length));
     const slice = rows.slice((st.page - 1) * per, st.page * per);
@@ -406,7 +444,7 @@ function itemsPage(view, kind) {
       const openInput = id ? 0 : num('#fOpen');
       const openingQty = id ? Number(cur.openingQty ?? (cur.stockByBranch || {})[cur.mainBranchId] ?? 0) : openInput;
       const payload = {
-        code: id ? keepOrReplaceCode(val('#fCode'), C.prefix, id) : normalizeItemCode(val('#fCode'), C.prefix),
+        code: id ? (keepOrReplaceCode(val('#fCode'), C.prefix, id) || fixedCode(C.prefix, usedItemCodes(id))) : normalizeItemCode(val('#fCode'), C.prefix),
         barcode: val('#fBc'), nameAr, nameEn, cost: num('#fCost'),
         ...(isP ? { price: num('#fPrice') } : {}),
         unitId, countryOriginId: val('#fOrigin') || null,
@@ -461,6 +499,50 @@ function itemsPage(view, kind) {
     XLSX.writeFile(wb, `${C.file}.xlsx`);
     toast(t('exported'));
   }
+  /* Excel / PDF of what the filters show now (every page, not only the one on screen) */
+  function exportTable(mode) {
+    const rows = list(), lvl = mode === 'levels';
+    const cols = lvl
+      ? [t('ix.no'), t('it.code'), t('ix.nameAr'), t('ix.nameEn'), t('it.stock'), t('ix.min'), t('it.reorder'), t('ix.max')]
+      : [t('ix.no'), t('it.code'), t('ix.nameAr'), t('ix.nameEn'), ...(isP ? [t('it.price')] : []), t('it.cost'), t('it.unit'), t('it.stock'), t('it.category'), t('it.storage'), t('it.origin'), t('ix.min'), t('it.reorder'), t('ix.max'), t('it.barcode')];
+    const nm = (path, id) => nameOf((LIVE.cache[path] || {})[id]) || '';
+    const locText = id => locRows(kind, id).map(x => `${locName(x.loc)} (${n3(x.qty)})`).join('، ');
+    const data = rows.map((r, i) => {
+      const it = r.it, stock = itemStock(it, st.branch);
+      const head = [i + 1, it.code || '', it.nameAr || it.name || '', it.nameEn || ''];
+      const lim = [Number(it.minStock || 0), Number(it.reorderPoint || 0), Number(it.maxStock || 0)];
+      return lvl ? [...head, stock, ...lim]
+        : [...head, ...(isP ? [Number(it.price || 0)] : []), Number(it.cost || 0), unitWithDef(it), stock, nm(C.cats, it.categoryId), locText(r.id), nm('countryOrigins', it.countryOriginId), ...lim, it.barcode || ''];
+    });
+    const filters = [
+      st.loc !== 'all' && [t('it.storage'), locName(st.loc)],
+      st.cat !== 'all' && [t('it.category'), nm(C.cats, st.cat)],
+      st.branch !== 'all' && [t('c.branch'), branchLabel(st.branch)],
+      st.origin !== 'all' && [t('it.origin'), nm('countryOrigins', st.origin)],
+      st.alert && [t('it.reorder'), t(st.alert === 'critical' ? 'it.kCritical' : 'it.kWarning')],
+      st.q && [t('ix.search'), st.q]
+    ].filter(Boolean);
+    return { rows, cols, data, filters, title: `${t(C.route)} · ${t(lvl ? 'ix.levelsTitle' : 'ix.allTitle')}` };
+  }
+  async function exportResults(fmt, mode) {
+    const x = exportTable(mode);
+    if (!x.rows.length) { toast(t('ix.empty'), { tone: 'danger', ic: 'alert' }); return; }
+    if (fmt === 'pdf') {
+      const rows = x.data.map(r => r.map((v, i) => (i === 0 ? String(v) : typeof v === 'number' ? fmtNum(v, 3) : v)));
+      printDoc(x.title, [[t('ix.count'), fmtNum(x.rows.length)], ...(x.filters.length ? x.filters : [[t('ix.filters'), t('ix.noFilter')]])], x.cols, rows);
+      return;
+    }
+    try { await needLib('XLSX'); } catch (e) { libFailed(); return; }
+    const ws = XLSX.utils.aoa_to_sheet([x.cols, ...x.data]);
+    ws['!cols'] = x.cols.map((c, i) => ({ wch: i === 0 ? 5 : i === 2 || i === 3 ? 34 : 16 }));
+    const wb = XLSX.utils.book_new();
+    if (S.lang === 'ar') wb.Workbook = { Views: [{ RTL: true }] };
+    XLSX.utils.book_append_sheet(wb, ws, mode === 'levels' ? 'Stock levels' : C.sheet);
+    const tag = [mode === 'levels' ? 'stock-levels' : 'all', ...x.filters.map(f => f[1])].join('-');
+    XLSX.writeFile(wb, `${C.file}-${fileSafe(tag).slice(0, 80)}.xlsx`);
+    toast(t('exported'));
+  }
+
   async function barcodesZip(btn) {
     const items = selectedItems(); if (!items.length) { toast(t('it.selectFirst'), { tone: 'danger', ic: 'alert' }); return; }
     try { await Promise.all([needLib('JSZip'), needLib('JsBarcode')]); } catch (e) { libFailed(); return; }
@@ -605,6 +687,8 @@ function itemsPage(view, kind) {
   view.addEventListener('click', e => {
     const pg = e.target.closest('[data-page]'); if (pg && !pg.disabled) { st.page = +pg.dataset.page; draw(); return; }
     const ak = e.target.closest('[data-alert]'); if (ak) { openAlert(ak.dataset.alert); return; }
+    const ix = e.target.closest('[data-ix]');
+    if (ix) { $$('.dd.open', view).forEach(d => d.classList.remove('open')); const [f, m] = ix.dataset.ix.split(':'); exportResults(f, m); return; }
     const cp = e.target.closest('[data-copy]');
     if (cp) { navigator.clipboard && navigator.clipboard.writeText(cp.dataset.copy).then(() => toast(t('it.copied')), () => {}); return; }
     const b = e.target.closest('[data-it]'); if (!b || b.disabled) return;
@@ -641,6 +725,7 @@ function itemsPage(view, kind) {
         x: { [t('it.category')]: x.name, [t('kd.parentCat')]: x.parent, [K('kTotal')]: x.n, [t('it.kWarning')]: x.warn, [t('it.kCritical')]: x.crit } })) };
   } });
   const unsub = LIVE.watch([...PATHS, C.other], draw);
+  LIVE.whenLoaded(['products', 'stockMaterials']).then(fixItemCodes);
   ensureOrders();
   draw();
   return () => { unsub(); closeDrill(); ordersUnsub && ordersUnsub(); freshDrawer(false); };
