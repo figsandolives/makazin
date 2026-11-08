@@ -182,7 +182,8 @@ const ITEM_CFG = {
 function itemsPage(view, kind) {
   const C = ITEM_CFG[kind], isP = kind === 'product';
   const PATHS = [C.path, C.cats, 'storageLocations', 'countryOrigins', 'branches', 'units'];
-  const st = (S[C.state] ||= { q: '', branch: 'all', cat: 'all', loc: 'all', origin: 'all', sort: 'default', per: 10, page: 1, sel: new Set(), imp: null, alert: null });
+  const st = (S[C.state] ||= { q: '', branch: 'all', cats: [], locs: [], origin: 'all', sort: 'default', per: 10, page: 1, sel: new Set(), imp: null, alert: null });
+  st.cats ||= []; st.locs ||= [];
   const K = k => t(`it.${kind}.${k}`);
   let first = true, saving = false, ordersUnsub = null;
   const COLS = isP ? 15 : 14;
@@ -199,8 +200,7 @@ function itemsPage(view, kind) {
     <section class="card table-card" data-anim>
       <div class="toolbar it-tools">
         <label class="search-field">${icon('search')}<input type="search" id="itQ" placeholder="${t('it.searchPh')}" value="${esc(st.q)}" autocomplete="off"></label>
-        <div class="select tb-select"><select id="itLoc" aria-label="${t('it.storage')}"></select>${icon('chevDown')}</div>
-        <div class="select tb-select"><select id="itCat" aria-label="${t('it.category')}"></select>${icon('chevDown')}</div>
+        ${['locs', 'cats'].map(k => `<div class="select tb-select cb cb-has-cap mp" data-mp="${k}"><span class="cb-cap">${t(k === 'locs' ? 'it.storage' : 'it.category')}</span><button type="button" class="cb-input mp-btn" aria-haspopup="listbox" aria-label="${t(k === 'locs' ? 'it.storage' : 'it.category')}"></button>${icon('chevDown')}</div>`).join('')}
         <div class="select tb-select"><select id="itBranch" aria-label="${t('c.branch')}"></select>${icon('chevDown')}</div>
         <div class="select tb-select"><select id="itOrigin" aria-label="${t('it.origin')}"></select>${icon('chevDown')}</div>
         ${isP ? `<div class="select tb-select"><select id="itSort" aria-label="${t('it.sort')}">${['default', 'salesDesc', 'salesAsc', 'incompleteInfo'].map(k => `<option value="${k}" ${st.sort === k ? 'selected' : ''}>${t('it.sort.' + k)}</option>`).join('')}</select>${icon('chevDown')}</div>` : ''}
@@ -231,8 +231,8 @@ function itemsPage(view, kind) {
   function list() {
     const q = normQ(st.q);
     let rows = Object.entries(LIVE.cache[C.path] || {}).filter(([, it]) => it && typeof it === 'object').map(([id, it]) => ({ id, it }));
-    if (st.cat !== 'all') rows = rows.filter(r => r.it.categoryId === st.cat);
-    if (st.loc !== 'all') rows = rows.filter(r => inLocation(kind, r.id, st.loc));
+    if (st.cats.length) rows = rows.filter(r => st.cats.includes(r.it.categoryId));
+    if (st.locs.length) rows = rows.filter(r => matchLoc(r.id));
     if (st.origin !== 'all') rows = rows.filter(r => r.it.countryOriginId === st.origin);
     if (st.alert) rows = rows.filter(r => reorderTone(itemStock(r.it, st.branch), Number(r.it.reorderPoint || 0)) === st.alert);
     if (q) rows = rows.filter(r => normQ(`${r.it.nameAr || ''} ${r.it.nameEn || ''} ${r.it.name || ''}`).includes(q) || normQ(r.it.code).includes(q) || normQ(r.it.barcode).includes(q));
@@ -314,18 +314,7 @@ function itemsPage(view, kind) {
     if (st.alert) setHtml(bar, `<div class="toolbar"><button class="btn btn-ghost" data-it="back">${icon('chevRight', 'flip')}<span>${t('pt.back')}</span></button>
       <h2 class="pt-title">${t(st.alert === 'critical' ? 'it.kCritical' : 'it.kWarning')}<small>${st.alert === 'critical' ? crit : warn} ${t('it.items')}</small></h2></div>`);
     setHtml($('#itBranch', view), `<option value="all">${t('allBranches')}</option>` + optsHtml(sortedOpts(LIVE.cache.branches).map(([id]) => [id, branchLabel(id)]), st.branch));
-    // Location and category narrow each other: each list keeps only what the other choice holds
-    const all = Object.entries(items).filter(([, it]) => it && typeof it === 'object');
-    const inLoc = st.loc === 'all' ? all : all.filter(([id]) => inLocation(kind, id, st.loc));
-    const catIds = new Set(inLoc.map(([, it]) => it.categoryId).filter(Boolean));
-    const catPairs = sortedOpts(LIVE.cache[C.cats]).filter(([id]) => st.loc === 'all' || catIds.has(id) || id === st.cat);
-    const inCat = st.cat === 'all' ? all : all.filter(([, it]) => it.categoryId === st.cat);
-    const locPairs = [...sortedOpts(LIVE.cache.storageLocations), [LOC_NONE, t('sl.noLocation')]]
-      .filter(([loc]) => st.cat === 'all' || loc === st.loc || inCat.some(([id]) => inLocation(kind, id, loc)));
-    const catAll = st.loc === 'all' ? t('it.allCats') : t('ix.catsOfLoc').replace('{x}', locName(st.loc));
-    const locAll = st.cat === 'all' ? t('it.allLocs') : t('ix.locsOfCat').replace('{x}', nameOf((LIVE.cache[C.cats] || {})[st.cat]) || '');
-    setHtml($('#itCat', view), `<option value="all">${esc(catAll)}</option>` + optsHtml(catPairs, st.cat));
-    setHtml($('#itLoc', view), `<option value="all">${esc(locAll)}</option>` + optsHtml(locPairs, st.loc));
+    mpCompute(items); mpPaint();
     setHtml($('#itOrigin', view), `<option value="all">${t('it.allOrigins')}</option>` + optsHtml(sortedOpts(LIVE.cache.countryOrigins), st.origin));
     if (needsSales() && !LIVE.loaded(['orders'])) { setHtml(body, skeletonRows(6, COLS)); setHtml($('#itPager', view), `<span class="pager-info">${t('it.loadingSales')}</span>`); return; }
     const rows = list();
@@ -334,7 +323,7 @@ function itemsPage(view, kind) {
     setHtml($('#itPager', view), pagerHtml(st, rows.length));
     const slice = rows.slice((st.page - 1) * per, st.page * per);
     pageIds = slice.map(r => r.id);
-    const filtering = st.alert || st.q || st.cat !== 'all' || st.loc !== 'all' || st.origin !== 'all' || st.sort === 'incompleteInfo';
+    const filtering = st.alert || st.q || st.cats.length || st.locs.length || st.origin !== 'all' || st.sort === 'incompleteInfo';
     setHtml(body, slice.length ? slice.map(row).join('')
       : `<tr class="empty"><td colspan="${COLS}"><div class="empty-state">${icon(filtering ? 'search' : C.ic)}<b>${filtering ? t('emptyTitle') : K('none')}</b><small>${filtering ? t('emptySub') : K('noneSub')}</small></div></td></tr>`);
     syncSelection(pageIds);
@@ -502,46 +491,175 @@ function itemsPage(view, kind) {
     XLSX.writeFile(wb, `${C.file}.xlsx`);
     toast(t('exported'));
   }
-  /* Excel / PDF of what the filters show now (every page, not only the one on screen) */
+  /* ---------- storage location & category: tick several; each list keeps only what the other's ticks hold ---------- */
+  const matchLoc = id => st.locs.some(l => inLocation(kind, id, l));
+  const catOf = id => (LIVE.cache[C.cats] || {})[id];
+  const MP = {
+    locs: { all: () => t('it.allLocs'), many: n => t('ix.nLocs').replace('{n}', n), one: id => locName(id) },
+    cats: { all: () => t('it.allCats'), many: n => t('ix.nCats').replace('{n}', n), one: id => nameOf(catOf(id)) || '' }
+  };
+  const mpOpts = { locs: [], cats: [] }, mpHint = { locs: '', cats: '' };
+  let mpOpen = null;
+  function mpCompute(items) {
+    const all = Object.entries(items).filter(([, it]) => it && typeof it === 'object');
+    const inLoc = st.locs.length ? all.filter(([id]) => matchLoc(id)) : all;
+    const catIds = new Set(inLoc.map(([, it]) => it.categoryId).filter(Boolean));
+    mpOpts.cats = sortedOpts(LIVE.cache[C.cats]).filter(([id]) => !st.locs.length || catIds.has(id) || st.cats.includes(id));
+    const inCat = st.cats.length ? all.filter(([, it]) => st.cats.includes(it.categoryId)) : all;
+    mpOpts.locs = [...sortedOpts(LIVE.cache.storageLocations), [LOC_NONE, t('sl.noLocation')]]
+      .filter(([loc]) => !st.cats.length || st.locs.includes(loc) || inCat.some(([id]) => inLocation(kind, id, loc)));
+    const names = (ids, key) => ids.map(MP[key].one).filter(Boolean).join('، ');
+    mpHint.cats = st.locs.length ? t('ix.catsOfLoc').replace('{x}', names(st.locs, 'locs')) : '';
+    mpHint.locs = st.cats.length ? t('ix.locsOfCat').replace('{x}', names(st.cats, 'cats')) : '';
+  }
+  const mpLabel = key => (!st[key].length ? MP[key].all() : st[key].length === 1 ? MP[key].one(st[key][0]) : MP[key].many(st[key].length));
+  function mpPaint() {
+    $$('[data-mp]', view).forEach(w => {
+      const key = w.dataset.mp, b = $('.mp-btn', w), cap = $('.cb-cap', w);
+      b.textContent = mpLabel(key);
+      w.classList.toggle('mp-on', st[key].length > 0);
+      if (cap.offsetWidth) b.style.paddingInlineStart = `${cap.offsetWidth + 22}px`;
+    });
+    if (mpOpen) { mpList(); mpPlace(); }
+  }
+  function mpShow(key) {
+    mpClose();
+    const w = $(`[data-mp="${key}"]`, view); if (!w) return;
+    const el = document.createElement('div');
+    el.className = 'cb-list mp-list'; el.setAttribute('role', 'listbox'); el.setAttribute('aria-multiselectable', 'true');
+    el.innerHTML = `<label class="mp-search">${icon('search')}<input type="search" class="mp-q" placeholder="${esc(t('ix.searchIn'))}" autocomplete="off"></label><p class="mp-hint" hidden></p><div class="mp-opts"></div>`;
+    document.body.appendChild(el);
+    mpOpen = { key, el, w, q: '' };
+    w.classList.add('cb-open');
+    $('.mp-q', el).addEventListener('input', e => { mpOpen.q = e.target.value; mpList(); });
+    el.addEventListener('mousedown', e => { if (!e.target.closest('.mp-q')) e.preventDefault(); });
+    el.addEventListener('click', e => { const o = e.target.closest('[data-v]'); if (o) mpToggle(key, o.dataset.v); });
+    mpList(); mpPlace();
+    setTimeout(() => { const q = mpOpen && $('.mp-q', mpOpen.el); q && q.focus(); }, 0);
+  }
+  function mpList() {
+    const { key, el, q } = mpOpen, nq = normQ(q), sel = st[key];
+    const hint = $('.mp-hint', el); hint.hidden = !mpHint[key]; hint.textContent = mpHint[key];
+    const opts = mpOpts[key].filter(([, n]) => !nq || normQ(n).includes(nq));
+    const box = on => `<span class="mp-box${on ? ' on' : ''}">${on ? icon('check') : ''}</span>`;
+    const opt = (v, n, on) => `<div class="cb-opt mp-opt${on ? ' sel' : ''}" role="option" aria-selected="${on}" data-v="${esc(v)}">${box(on)}<span>${esc(n)}</span></div>`;
+    $('.mp-opts', el).innerHTML = (nq ? '' : opt('', MP[key].all(), !sel.length))
+      + (opts.length ? opts.map(([id, n]) => opt(id, n, sel.includes(id))).join('') : `<div class="cb-none">${esc(t('noResults'))}</div>`);
+  }
+  function mpPlace() {
+    if (!mpOpen) return;
+    const { w, el } = mpOpen, r = w.getBoundingClientRect(), wd = Math.max(r.width, 260);
+    const below = innerHeight - r.bottom - 12, above = r.top - 12, up = below < 260 && above > below;
+    el.style.width = `${wd}px`;
+    el.style.maxHeight = `${Math.min(380, Math.max(180, up ? above : below))}px`;
+    el.style.left = `${Math.min(Math.max(8, document.dir === 'rtl' ? r.right - wd : r.left), innerWidth - wd - 8)}px`;
+    el.style.top = up ? '' : `${r.bottom + 6}px`;
+    el.style.bottom = up ? `${innerHeight - r.top + 6}px` : '';
+    el.classList.toggle('up', up);
+  }
+  function mpClose() {
+    if (!mpOpen) return;
+    mpOpen.el.remove(); mpOpen.w.classList.remove('cb-open'); mpOpen = null;
+  }
+  function mpToggle(key, v) {
+    st[key] = !v ? [] : st[key].includes(v) ? st[key].filter(x => x !== v) : [...st[key], v];
+    st.page = 1; draw();
+  }
+  const mpOutside = e => { if (mpOpen && !mpOpen.el.contains(e.target) && !mpOpen.w.contains(e.target)) mpClose(); };
+  const mpKey = e => { if (e.key === 'Escape' && mpOpen) { const w = mpOpen.w; mpClose(); $('.mp-btn', w).focus(); } };
+  const mpMove = e => { if (mpOpen && !(e.target && e.target.closest && e.target.closest('.mp-list'))) mpPlace(); };
+  document.addEventListener('mousedown', mpOutside, true);
+  document.addEventListener('keydown', mpKey);
+  addEventListener('scroll', mpMove, true); addEventListener('resize', mpMove);
+  const mpCleanup = () => { mpClose(); document.removeEventListener('mousedown', mpOutside, true); document.removeEventListener('keydown', mpKey); removeEventListener('scroll', mpMove, true); removeEventListener('resize', mpMove); };
+
+  /* ---------- Excel / PDF of what the filters show now (every page), in Arabic and English ---------- */
+  const bi = k => { const a = I18N.ar[k] ?? k, e = I18N.en[k] ?? a; return a === e ? [a] : [a, e]; };
+  const biText = k => bi(k).join(' / ');
+  const biName = o => { if (!o) return ''; const a = o.nameAr || o.name || '', e = o.nameEn || ''; return e && e !== a ? (a ? `${a} / ${e}` : e) : a; };
+  const locBi = loc => (loc === LOC_NONE ? biText('sl.noLocation') : biName((LIVE.cache.storageLocations || {})[loc]));
   function exportTable(mode) {
     const rows = list(), lvl = mode === 'levels';
-    const cols = lvl
-      ? [t('ix.no'), t('it.code'), t('ix.nameAr'), t('ix.nameEn'), t('it.stock'), t('ix.min'), t('it.reorder'), t('ix.max')]
-      : [t('ix.no'), t('it.code'), t('ix.nameAr'), t('ix.nameEn'), ...(isP ? [t('it.price')] : []), t('it.cost'), t('it.unit'), t('it.stock'), t('it.category'), t('it.storage'), t('it.origin'), t('ix.min'), t('it.reorder'), t('ix.max'), t('it.barcode')];
-    const nm = (path, id) => nameOf((LIVE.cache[path] || {})[id]) || '';
-    const locText = id => locRows(kind, id).map(x => `${locName(x.loc)} (${n3(x.qty)})`).join('، ');
-    const data = rows.map((r, i) => {
+    const keys = lvl
+      ? ['ix.no', 'it.code', 'ix.nameAr', 'ix.nameEn', 'it.stock', 'ix.min', 'it.reorder', 'ix.max']
+      : ['ix.no', 'it.code', 'ix.nameAr', 'ix.nameEn', ...(isP ? ['it.price'] : []), 'it.cost', 'it.unit', 'it.stock', 'it.category', 'it.storage', 'it.origin', 'ix.min', 'it.reorder', 'ix.max', 'it.barcode'];
+    const locText = id => locRows(kind, id).map(x => `${locBi(x.loc)} (${n3(x.qty)})`).join('، ');
+    const rowData = (r, i) => {
       const it = r.it, stock = itemStock(it, st.branch);
       const head = [i + 1, it.code || '', it.nameAr || it.name || '', it.nameEn || ''];
       const lim = [Number(it.minStock || 0), Number(it.reorderPoint || 0), Number(it.maxStock || 0)];
       return lvl ? [...head, stock, ...lim]
-        : [...head, ...(isP ? [Number(it.price || 0)] : []), Number(it.cost || 0), unitWithDef(it), stock, nm(C.cats, it.categoryId), locText(r.id), nm('countryOrigins', it.countryOriginId), ...lim, it.barcode || ''];
-    });
+        : [...head, ...(isP ? [Number(it.price || 0)] : []), Number(it.cost || 0), unitWithDef(it), stock, biName(catOf(it.categoryId)), locText(r.id), biName((LIVE.cache.countryOrigins || {})[it.countryOriginId]), ...lim, it.barcode || ''];
+    };
     const filters = [
-      st.loc !== 'all' && [t('it.storage'), locName(st.loc)],
-      st.cat !== 'all' && [t('it.category'), nm(C.cats, st.cat)],
-      st.branch !== 'all' && [t('c.branch'), branchLabel(st.branch)],
-      st.origin !== 'all' && [t('it.origin'), nm('countryOrigins', st.origin)],
-      st.alert && [t('it.reorder'), t(st.alert === 'critical' ? 'it.kCritical' : 'it.kWarning')],
-      st.q && [t('ix.search'), st.q]
+      st.locs.length && [biText('it.storage'), st.locs.map(locBi).join('، ')],
+      st.cats.length && [biText('it.category'), st.cats.map(id => biName(catOf(id))).join('، ')],
+      st.branch !== 'all' && [biText('c.branch'), branchLabel(st.branch)],
+      st.origin !== 'all' && [biText('it.origin'), biName((LIVE.cache.countryOrigins || {})[st.origin])],
+      st.alert && [biText('it.reorder'), biText(st.alert === 'critical' ? 'it.kCritical' : 'it.kWarning')],
+      st.q && [biText('ix.search'), st.q]
     ].filter(Boolean);
-    return { rows, cols, data, filters, title: `${t(C.route)} · ${t(lvl ? 'ix.levelsTitle' : 'ix.allTitle')}` };
+    return { rows, keys, rowData, filters, lvl };
+  }
+  function pdfHtml(x) {
+    // One section per category, each starting on a new page
+    const groups = new Map();
+    x.rows.forEach(r => { const k = r.it.categoryId && catOf(r.it.categoryId) ? r.it.categoryId : ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
+    const order = [...groups.keys()].sort((a, b) => (!a ? 1 : !b ? -1 : biName(catOf(a)).localeCompare(biName(catOf(b)), 'ar')));
+    const [titleAr, titleEn] = bi(x.lvl ? 'ix.levelsTitle' : 'ix.allTitle'), [kindAr, kindEn] = bi(C.route);
+    const wide = { 'ix.nameAr': 'w-name', 'ix.nameEn': 'w-name', 'it.storage': 'w-loc', 'it.category': 'w-mid', 'it.unit': 'w-mid', 'it.origin': 'w-mid' };
+    const head = `<tr>${x.keys.map(k => { const [a, e] = bi(k); return `<th class="${wide[k] || ''}">${esc(a)}${e ? `<small>${esc(e)}</small>` : ''}</th>`; }).join('')}</tr>`;
+    const cell = (v, j) => `<td class="${j === 2 ? 'ar' : j === 3 ? 'en' : typeof v === 'number' ? 'n' : ''}"${j === 3 ? ' dir="ltr"' : ''}>${esc(j === 0 ? String(v) : typeof v === 'number' ? fmtNum(v, 3) : v)}</td>`;
+    const when = fmtDateTime(Date.now());
+    const filt = x.filters.length ? `<div class="filters">${x.filters.map(([k, v]) => `<span><small>${esc(k)}:</small> ${esc(v)}</span>`).join('')}</div>` : '';
+    const secs = order.map(k => {
+      const rs = groups.get(k), c = k ? catOf(k) : null;
+      const [noA, noE] = bi('ix.noCat');
+      const ar = c ? c.nameAr || c.name || c.nameEn || '' : noA, en = c ? c.nameEn || '' : noE;
+      return `<section class="sec">
+        <header class="top"><div><b class="brand">رصيد · Raseed</b><span>${esc(kindAr)} · ${esc(titleAr)}</span><span dir="ltr">${esc(kindEn)} · ${esc(titleEn)}</span></div><div class="when">${esc(when)}</div></header>
+        <h1>${esc(ar)}${en && en !== ar ? `<small dir="ltr">${esc(en)}</small>` : ''}<em>${fmtNum(rs.length)} ${esc(biText('ix.itemsN'))}</em></h1>
+        ${filt}
+        <table class="${x.lvl ? 'lvl' : 'full'}"><thead>${head}</thead><tbody>${rs.map((r, i) => `<tr>${x.rowData(r, i).map(cell).join('')}</tr>`).join('')}</tbody></table>
+      </section>`;
+    }).join('');
+    return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(kindAr)} · ${esc(titleAr)} — ${esc(kindEn)} · ${esc(titleEn)}</title>
+      <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+      <style>@page{size:A4${x.lvl ? '' : ' landscape'};margin:10mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      body{font-family:'IBM Plex Sans Arabic',system-ui,sans-serif;color:#0f172a;margin:0;font-size:${x.lvl ? 11 : 9.5}px;line-height:1.35}
+      .sec+.sec{break-before:page;page-break-before:always}
+      .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #16a34a;padding-bottom:6px}
+      .top div:first-child{display:flex;flex-direction:column;font-size:11px;color:#334155;font-weight:600}.brand{color:#16a34a;font-size:12px}
+      .when{font-size:10.5px;color:#475569;white-space:nowrap}
+      h1{text-align:center;font-size:22px;margin:14px 0 4px;line-height:1.3}h1 small{display:block;font-size:15px;color:#334155;font-weight:600}
+      h1 em{display:block;font-style:normal;font-size:11px;color:#64748b;font-weight:400;margin-top:2px}
+      .filters{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 16px;font-size:10.5px;margin-bottom:8px}.filters small{color:#64748b}
+      table{width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #64748b;margin-top:6px}
+      thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}
+      th{background:#e2e8f0;font-weight:700;padding:4px 3px;border:1px solid #64748b;text-align:center;vertical-align:middle;line-height:1.2}
+      th small{display:block;font-weight:600;color:#475569;font-size:.85em}
+      td{padding:3px 4px;border:1px solid #94a3b8;text-align:center;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word}
+      tbody tr:nth-child(even) td{background:#f8fafc}
+      td.ar{text-align:right}td.en{text-align:left}td.n{font-variant-numeric:tabular-nums}
+      th.w-name{width:${x.lvl ? 27 : 14}%}th.w-loc{width:10%}th.w-mid{width:7%}
+      table.lvl th:first-child{width:4.5%}table.lvl th:nth-child(2){width:9%}
+      table.full th:first-child{width:3%}table.full th:nth-child(2){width:5.5%}</style></head>
+      <body>${secs}</body></html>`;
   }
   async function exportResults(fmt, mode) {
     const x = exportTable(mode);
     if (!x.rows.length) { toast(t('ix.empty'), { tone: 'danger', ic: 'alert' }); return; }
-    if (fmt === 'pdf') {
-      const rows = x.data.map(r => r.map((v, i) => (i === 0 ? String(v) : typeof v === 'number' ? fmtNum(v, 3) : v)));
-      printDoc(x.title, [[t('ix.count'), fmtNum(x.rows.length)], ...(x.filters.length ? x.filters : [[t('ix.filters'), t('ix.noFilter')]])], x.cols, rows);
-      return;
-    }
+    if (fmt === 'pdf') { printHtml(pdfHtml(x)); return; }
     try { await needLib('XLSX'); } catch (e) { libFailed(); return; }
-    const ws = XLSX.utils.aoa_to_sheet([x.cols, ...x.data]);
-    ws['!cols'] = x.cols.map((c, i) => ({ wch: i === 0 ? 5 : i === 2 || i === 3 ? 34 : 16 }));
+    const cols = [...x.keys.map(biText), biText('it.category')];
+    const data = x.rows.map((r, i) => [...x.rowData(r, i), biName(catOf(r.it.categoryId))]);
+    if (!x.lvl) { cols.pop(); data.forEach(d => d.pop()); }
+    const ws = XLSX.utils.aoa_to_sheet([...x.filters.map(f => [f[0], f[1]]), ...(x.filters.length ? [[]] : []), cols, ...data]);
+    ws['!cols'] = cols.map((c, i) => ({ wch: i === 0 ? 6 : i === 2 || i === 3 ? 36 : 18 }));
     const wb = XLSX.utils.book_new();
-    if (S.lang === 'ar') wb.Workbook = { Views: [{ RTL: true }] };
-    XLSX.utils.book_append_sheet(wb, ws, mode === 'levels' ? 'Stock levels' : C.sheet);
-    const tag = [mode === 'levels' ? 'stock-levels' : 'all', ...x.filters.map(f => f[1])].join('-');
+    wb.Workbook = { Views: [{ RTL: true }] };
+    XLSX.utils.book_append_sheet(wb, ws, x.lvl ? 'Stock levels' : C.sheet);
+    const tag = [x.lvl ? 'stock-levels' : 'all', ...x.filters.map(f => f[1])].join('-');
     XLSX.writeFile(wb, `${C.file}-${fileSafe(tag).slice(0, 80)}.xlsx`);
     toast(t('exported'));
   }
@@ -668,7 +786,7 @@ function itemsPage(view, kind) {
   let deb;
   $('#itQ', view).addEventListener('input', e => { clearTimeout(deb); deb = setTimeout(() => { st.q = e.target.value.trim(); st.page = 1; draw(); }, 120); });
   const onSel = (sel, key, fn) => $(sel, view).addEventListener('change', e => { st[key] = key === 'per' ? +e.target.value : e.target.value; st.page = 1; fn && fn(); draw(); });
-  onSel('#itBranch', 'branch'); onSel('#itCat', 'cat'); onSel('#itLoc', 'loc'); onSel('#itOrigin', 'origin'); onSel('#itPer', 'per');
+  onSel('#itBranch', 'branch'); onSel('#itOrigin', 'origin'); onSel('#itPer', 'per');
   if (isP) onSel('#itSort', 'sort', ensureOrders);
   $('#itAll', view).addEventListener('change', e => {
     pageIds.forEach(id => (e.target.checked ? st.sel.add(id) : st.sel.delete(id)));
@@ -690,6 +808,8 @@ function itemsPage(view, kind) {
   view.addEventListener('click', e => {
     const pg = e.target.closest('[data-page]'); if (pg && !pg.disabled) { st.page = +pg.dataset.page; draw(); return; }
     const ak = e.target.closest('[data-alert]'); if (ak) { openAlert(ak.dataset.alert); return; }
+    const mb = e.target.closest('.mp-btn');
+    if (mb) { const key = mb.closest('[data-mp]').dataset.mp; if (mpOpen && mpOpen.key === key) mpClose(); else mpShow(key); return; }
     const ix = e.target.closest('[data-ix]');
     if (ix) { $$('.dd.open', view).forEach(d => d.classList.remove('open')); const [f, m] = ix.dataset.ix.split(':'); exportResults(f, m); return; }
     const cp = e.target.closest('[data-copy]');
@@ -720,7 +840,7 @@ function itemsPage(view, kind) {
     const none = row(null, t('kd.noCat'), ''); if (none.n) list.push(none);
     const badge = (v, tone) => (v ? `<span class="badge tone-${tone}">${fmtNum(v)}</span>` : '<span class="muted">0</span>');
     return { title: t('it.kCats'), sub: t('kd.catsSub'), ic: 'folder', file: `${C.route}-categories.xlsx`,
-      onRow: id => { st.cat = id; st.page = 1; closeDrill(); draw(); },
+      onRow: id => { st.cats = [id]; st.page = 1; closeDrill(); draw(); },
       chips: [[t('it.kCats'), fmtNum(cats.length)], [K('kTotal'), fmtNum(items.length)], [t('it.kWarning'), fmtNum(list.reduce((s, x) => s + x.warn, 0))], [t('it.kCritical'), fmtNum(list.reduce((s, x) => s + x.crit, 0)), 'danger']],
       cols: [{ h: t('it.category') }, { h: t('kd.parentCat') }, { h: K('kTotal'), end: 1 }, { h: t('it.kWarning'), end: 1 }, { h: t('it.kCritical'), end: 1 }],
       rows: list.map(x => ({ id: x.id, text: `${x.name} ${x.parent}`,
@@ -731,7 +851,7 @@ function itemsPage(view, kind) {
   LIVE.whenLoaded(['products', 'stockMaterials']).then(fixItemCodes);
   ensureOrders();
   draw();
-  return () => { unsub(); closeDrill(); ordersUnsub && ordersUnsub(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); mpCleanup(); ordersUnsub && ordersUnsub(); freshDrawer(false); };
 }
 
 PAGES.products = view => itemsPage(view, 'product');
