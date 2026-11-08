@@ -605,22 +605,31 @@ function itemsPage(view, kind) {
   const mpCleanup = () => { mpClose(); document.removeEventListener('mousedown', mpOutside, true); document.removeEventListener('keydown', mpKey); removeEventListener('scroll', mpMove, true); removeEventListener('resize', mpMove); };
 
   /* ---------- Excel / PDF of what the filters show now (every page), in Arabic and English ---------- */
-  const bi = k => { const a = I18N.ar[k] ?? k, e = I18N.en[k] ?? a; return a === e ? [a] : [a, e]; };
+  const bi = k => { if (Array.isArray(k)) return k.filter(Boolean); const a = I18N.ar[k] ?? k, e = I18N.en[k] ?? a; return a === e ? [a] : [a, e]; };
   const biText = k => bi(k).join(' / ');
   const biName = o => { if (!o) return ''; const a = o.nameAr || o.name || '', e = o.nameEn || ''; return e && e !== a ? (a ? `${a} / ${e}` : e) : a; };
   const locBi = loc => (loc === LOC_NONE ? biText('sl.noLocation') : biName((LIVE.cache.storageLocations || {})[loc]));
   function exportTable(mode) {
     const rows = list(), lvl = mode === 'levels';
+    // Stock is per branch: one branch chosen → its column, named; all branches → a column for each branch and a total
+    const brs = Object.entries(LIVE.cache.branches || {}).filter(([, b]) => b && typeof b === 'object')
+      .sort((a, b) => (!!b[1].isMain - !!a[1].isMain) || (a[1].nameAr || '').localeCompare(b[1].nameAr || '', 'ar')).map(([id]) => id);
+    const brBi = id => { const b = (LIVE.cache.branches || {})[id] || {}, a = b.nameAr || b.name || branchLabel(id), e = b.nameEn || ''; return [a, e && e !== a ? e : ''].filter(Boolean); };
+    const [sA, sE] = bi('it.stock'), [tA, tE] = bi('ix.total');
+    const one = st.branch !== 'all', qBr = one ? [st.branch] : brs;
+    const stockKeys = one ? [(([a, e]) => [`${sA} - ${a}`, e ? `${sE} - ${e}` : sE])(brBi(st.branch))]
+      : [...brs.map(brBi), [tA, tE]];
+    const stockVals = it => { const v = qBr.map(b => itemStock(it, b)); return one ? v : [...v, v.reduce((x, y) => x + y, 0)]; };
     const keys = lvl
-      ? ['ix.no', 'it.code', 'ix.nameAr', 'ix.nameEn', 'it.stock']
-      : ['ix.no', 'it.code', 'ix.nameAr', 'ix.nameEn', ...(isP ? ['it.price'] : []), 'it.cost', 'it.unit', 'it.stock', 'it.category', 'it.storage', 'it.origin', 'ix.min', 'it.reorder', 'ix.max', 'it.barcode'];
+      ? ['ix.no', 'it.code', 'ix.nameAr', 'ix.nameEn', ...stockKeys]
+      : ['ix.no', 'it.code', 'ix.nameAr', 'ix.nameEn', ...(isP ? ['it.price'] : []), 'it.cost', 'it.unit', ...stockKeys, 'it.category', 'it.storage', 'it.origin', 'ix.min', 'it.reorder', 'ix.max', 'it.barcode'];
     const locText = id => locRows(kind, id).map(x => `${locBi(x.loc)} (${n3(x.qty)})`).join('، ');
     const rowData = (r, i) => {
-      const it = r.it, stock = itemStock(it, st.branch);
+      const it = r.it, stock = stockVals(it);
       const head = [i + 1, it.code || '', it.nameAr || it.name || '', it.nameEn || ''];
       const lim = [Number(it.minStock || 0), Number(it.reorderPoint || 0), Number(it.maxStock || 0)];
-      return lvl ? [...head, stock]
-        : [...head, ...(isP ? [Number(it.price || 0)] : []), Number(it.cost || 0), unitWithDef(it), stock, catBi(it.categoryId), locText(r.id), biName((LIVE.cache.countryOrigins || {})[it.countryOriginId]), ...lim, it.barcode || ''];
+      return lvl ? [...head, ...stock]
+        : [...head, ...(isP ? [Number(it.price || 0)] : []), Number(it.cost || 0), unitWithDef(it), ...stock, catBi(it.categoryId), locText(r.id), biName((LIVE.cache.countryOrigins || {})[it.countryOriginId]), ...lim, it.barcode || ''];
     };
     const filters = [
       st.locs.length && [biText('it.storage'), st.locs.map(locBi).join('، ')],
@@ -630,7 +639,7 @@ function itemsPage(view, kind) {
       st.alert && [biText('it.reorder'), biText(st.alert === 'critical' ? 'it.kCritical' : 'it.kWarning')],
       st.q && [biText('ix.search'), st.q]
     ].filter(Boolean);
-    return { rows, keys, rowData, filters, lvl };
+    return { rows, keys, rowData, filters, lvl, qN: stockKeys.length };
   }
   function pdfHtml(x) {
     // One section per category, each starting on a new page
@@ -673,8 +682,8 @@ function itemsPage(view, kind) {
       td{padding:3px 4px;border:1px solid #94a3b8;text-align:center;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word}
       tbody tr:nth-child(even) td{background:#f8fafc}
       td.ar{text-align:right}td.en{text-align:left}td.n{font-variant-numeric:tabular-nums}
-      th.w-name{width:${x.lvl ? 35 : 14}%}th.w-loc{width:10%}th.w-mid{width:7%}
-      table.lvl th:first-child{width:5%}table.lvl th:nth-child(2){width:11%}table.lvl th:last-child{width:14%}
+      th.w-name{width:${x.lvl ? (84 - x.qN * (x.qN > 1 ? 10 : 14)) / 2 : 14}%}th.w-loc{width:10%}th.w-mid{width:7%}
+      table.lvl th:first-child{width:5%}table.lvl th:nth-child(2){width:11%}table.lvl th:nth-child(n+5){width:${x.qN > 1 ? 10 : 14}%}
       table.full th:first-child{width:3%}table.full th:nth-child(2){width:5.5%}</style></head>
       <body>${secs}</body></html>`;
   }
