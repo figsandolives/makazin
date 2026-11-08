@@ -231,7 +231,7 @@ function itemsPage(view, kind) {
   function list() {
     const q = normQ(st.q);
     let rows = Object.entries(LIVE.cache[C.path] || {}).filter(([, it]) => it && typeof it === 'object').map(([id, it]) => ({ id, it }));
-    if (st.cats.length) rows = rows.filter(r => st.cats.includes(r.it.categoryId));
+    if (st.cats.length) { const cs = catSet(); rows = rows.filter(r => cs.has(r.it.categoryId)); }
     if (st.locs.length) rows = rows.filter(r => matchLoc(r.id));
     if (st.origin !== 'all') rows = rows.filter(r => r.it.countryOriginId === st.origin);
     if (st.alert) rows = rows.filter(r => reorderTone(itemStock(r.it, st.branch), Number(r.it.reorderPoint || 0)) === st.alert);
@@ -263,7 +263,7 @@ function itemsPage(view, kind) {
       <td data-label="${t('it.cost')}" class="end"><span class="num">${fmtMoney(Number(it.cost || 0))}</span></td>
       <td data-label="${t('it.unit')}">${esc(unitWithDef(it))}</td>
       <td data-label="${t('it.stock')}" class="end">${tone ? `<span class="badge tone-${tone === 'critical' ? 'danger' : 'warning'}" data-tip="${t(tone === 'critical' ? 'it.criticalTip' : 'it.warningTip')}"><i></i>${n3(stock)}</span>` : `<span class="num">${n3(stock)}</span>`}</td>
-      <td data-label="${t('it.category')}">${named(C.cats, it.categoryId)}</td>
+      <td data-label="${t('it.category')}">${esc(catLabel(it.categoryId)) || '<span class="muted">—</span>'}</td>
       <td data-label="${t('it.storage')}">${locCell(kind, r.id)}</td>
       <td data-label="${t('it.origin')}">${named('countryOrigins', it.countryOriginId)}</td>
       <td data-label="${t('it.min')}" class="end num">${n3(it.minStock)}</td>
@@ -494,18 +494,48 @@ function itemsPage(view, kind) {
   /* ---------- storage location & category: tick several; each list keeps only what the other's ticks hold ---------- */
   const matchLoc = id => st.locs.some(l => inLocation(kind, id, l));
   const catOf = id => (LIVE.cache[C.cats] || {})[id];
+  /* Category tree: a category shows as "last sub - main", e.g. "سمبوسة مجمدة - الحبوب الكاملة".
+     The middle level is added only when two categories would read the same. */
+  const catName = (o, lang) => (!o ? '' : lang === 'en' ? (o.nameEn || o.name_en || o.name || o.nameAr || o.name_ar || '') : (o.nameAr || o.name_ar || o.name || o.nameEn || o.name_en || ''));
+  let catMemo = null;
+  function catTree() {
+    const src = LIVE.cache[C.cats] || {};
+    if (catMemo && catMemo.src === src) return catMemo;
+    const ok = id => id && src[id] && typeof src[id] === 'object';
+    const chain = id => { const ch = [id]; let p = src[id].parentId; while (ok(p) && !ch.includes(p)) { ch.push(p); p = src[p].parentId; } return ch; };
+    const chains = {}, kids = {};
+    Object.keys(src).forEach(id => { if (!ok(id)) return; chains[id] = chain(id); const p = chains[id][1]; if (p) (kids[p] ||= []).push(id); });
+    const label = lang => {
+      const short = ch => (ch.length > 1 ? [ch[0], ch[ch.length - 1]] : ch);
+      const txt = ids => ids.map(j => catName(src[j], lang)).filter(Boolean).join(' - ');
+      const count = {}; Object.values(chains).forEach(ch => { const k = txt(short(ch)); count[k] = (count[k] || 0) + 1; });
+      const out = {}; Object.entries(chains).forEach(([id, ch]) => { const k = txt(short(ch)); out[id] = (count[k] > 1 ? txt(ch) : k) || id; });
+      return out;
+    };
+    // sort key: main first, then the middle level, then the last sub, so each main's categories sit together
+    const sortKey = id => [...chains[id]].reverse().map(j => catName(src[j], S.lang)).join(' › ');
+    const under = id => { const out = [id]; for (let i = 0; i < out.length; i++) (kids[out[i]] || []).forEach(k => { if (!out.includes(k)) out.push(k); }); return out; };
+    catMemo = { src, chains, ar: label('ar'), en: label('en'), sortKey, under };
+    return catMemo;
+  }
+  const catLabel = (id, lang = S.lang) => (id ? catTree()[lang === 'en' ? 'en' : 'ar'][id] || '' : '');
+  const catBi = id => { const a = catLabel(id, 'ar'), e = catLabel(id, 'en'); return e && e !== a ? (a ? `${a} / ${e}` : e) : a; };
+  // the chosen categories plus everything inside them
+  const catSet = () => { const tr = catTree(), set = new Set(); st.cats.forEach(id => tr.under(id).forEach(x => set.add(x))); return set; };
+  const catOpts = () => { const tr = catTree(); return Object.keys(tr.chains).map(id => [id, catLabel(id)]).sort((a, b) => tr.sortKey(a[0]).localeCompare(tr.sortKey(b[0]), S.lang === 'en' ? 'en' : 'ar')); };
   const MP = {
     locs: { all: () => t('it.allLocs'), many: n => t('ix.nLocs').replace('{n}', n), one: id => locName(id) },
-    cats: { all: () => t('it.allCats'), many: n => t('ix.nCats').replace('{n}', n), one: id => nameOf(catOf(id)) || '' }
+    cats: { all: () => t('it.allCats'), many: n => t('ix.nCats').replace('{n}', n), one: id => catLabel(id) }
   };
   const mpOpts = { locs: [], cats: [] }, mpHint = { locs: '', cats: '' };
   let mpOpen = null;
   function mpCompute(items) {
     const all = Object.entries(items).filter(([, it]) => it && typeof it === 'object');
     const inLoc = st.locs.length ? all.filter(([id]) => matchLoc(id)) : all;
-    const catIds = new Set(inLoc.map(([, it]) => it.categoryId).filter(Boolean));
-    mpOpts.cats = sortedOpts(LIVE.cache[C.cats]).filter(([id]) => !st.locs.length || catIds.has(id) || st.cats.includes(id));
-    const inCat = st.cats.length ? all.filter(([, it]) => st.cats.includes(it.categoryId)) : all;
+    const tr = catTree(), catIds = new Set();
+    inLoc.forEach(([, it]) => (tr.chains[it.categoryId] || []).forEach(c => catIds.add(c)));
+    mpOpts.cats = catOpts().filter(([id]) => !st.locs.length || catIds.has(id) || st.cats.includes(id));
+    const cs = catSet(), inCat = st.cats.length ? all.filter(([, it]) => cs.has(it.categoryId)) : all;
     mpOpts.locs = [...sortedOpts(LIVE.cache.storageLocations), [LOC_NONE, t('sl.noLocation')]]
       .filter(([loc]) => !st.cats.length || st.locs.includes(loc) || inCat.some(([id]) => inLocation(kind, id, loc)));
     const names = (ids, key) => ids.map(MP[key].one).filter(Boolean).join('، ');
@@ -589,11 +619,11 @@ function itemsPage(view, kind) {
       const head = [i + 1, it.code || '', it.nameAr || it.name || '', it.nameEn || ''];
       const lim = [Number(it.minStock || 0), Number(it.reorderPoint || 0), Number(it.maxStock || 0)];
       return lvl ? [...head, stock]
-        : [...head, ...(isP ? [Number(it.price || 0)] : []), Number(it.cost || 0), unitWithDef(it), stock, biName(catOf(it.categoryId)), locText(r.id), biName((LIVE.cache.countryOrigins || {})[it.countryOriginId]), ...lim, it.barcode || ''];
+        : [...head, ...(isP ? [Number(it.price || 0)] : []), Number(it.cost || 0), unitWithDef(it), stock, catBi(it.categoryId), locText(r.id), biName((LIVE.cache.countryOrigins || {})[it.countryOriginId]), ...lim, it.barcode || ''];
     };
     const filters = [
       st.locs.length && [biText('it.storage'), st.locs.map(locBi).join('، ')],
-      st.cats.length && [biText('it.category'), st.cats.map(id => biName(catOf(id))).join('، ')],
+      st.cats.length && [biText('it.category'), st.cats.map(catBi).join('، ')],
       st.branch !== 'all' && [biText('c.branch'), branchLabel(st.branch)],
       st.origin !== 'all' && [biText('it.origin'), biName((LIVE.cache.countryOrigins || {})[st.origin])],
       st.alert && [biText('it.reorder'), biText(st.alert === 'critical' ? 'it.kCritical' : 'it.kWarning')],
@@ -605,7 +635,8 @@ function itemsPage(view, kind) {
     // One section per category, each starting on a new page
     const groups = new Map();
     x.rows.forEach(r => { const k = r.it.categoryId && catOf(r.it.categoryId) ? r.it.categoryId : ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
-    const order = [...groups.keys()].sort((a, b) => (!a ? 1 : !b ? -1 : biName(catOf(a)).localeCompare(biName(catOf(b)), 'ar')));
+    const tr = catTree();
+    const order = [...groups.keys()].sort((a, b) => (!a ? 1 : !b ? -1 : tr.sortKey(a).localeCompare(tr.sortKey(b), 'ar')));
     const [titleAr, titleEn] = bi(x.lvl ? 'ix.levelsTitle' : 'ix.allTitle'), [kindAr, kindEn] = bi(C.route);
     const wide = { 'ix.nameAr': 'w-name', 'ix.nameEn': 'w-name', 'it.storage': 'w-loc', 'it.category': 'w-mid', 'it.unit': 'w-mid', 'it.origin': 'w-mid' };
     const head = `<tr>${x.keys.map(k => { const [a, e] = bi(k); return `<th class="${wide[k] || ''}">${esc(a)}${e ? `<small>${esc(e)}</small>` : ''}</th>`; }).join('')}</tr>`;
@@ -615,7 +646,7 @@ function itemsPage(view, kind) {
     const secs = order.map(k => {
       const rs = groups.get(k), c = k ? catOf(k) : null;
       const [noA, noE] = bi('ix.noCat');
-      const ar = c ? c.nameAr || c.name || c.nameEn || '' : noA, en = c ? c.nameEn || '' : noE;
+      const ar = c ? catLabel(k, 'ar') : noA, en = c ? catLabel(k, 'en') : noE;
       return `<section class="sec">
         <header class="top"><div><b class="brand">رصيد · Raseed</b><span>${esc(kindAr)} · ${esc(titleAr)}</span><span dir="ltr">${esc(kindEn)} · ${esc(titleEn)}</span></div><div class="when">${esc(when)}</div></header>
         <h1>${esc(ar)}${en && en !== ar ? `<small dir="ltr">${esc(en)}</small>` : ''}<em>${fmtNum(rs.length)} ${esc(biText('ix.itemsN'))}</em></h1>
@@ -652,7 +683,7 @@ function itemsPage(view, kind) {
     if (fmt === 'pdf') { printHtml(pdfHtml(x)); return; }
     try { await needLib('XLSX'); } catch (e) { libFailed(); return; }
     const cols = [...x.keys.map(biText), biText('it.category')];
-    const data = x.rows.map((r, i) => [...x.rowData(r, i), biName(catOf(r.it.categoryId))]);
+    const data = x.rows.map((r, i) => [...x.rowData(r, i), catBi(r.it.categoryId)]);
     if (!x.lvl) { cols.pop(); data.forEach(d => d.pop()); }
     const ws = XLSX.utils.aoa_to_sheet([...x.filters.map(f => [f[0], f[1]]), ...(x.filters.length ? [[]] : []), cols, ...data]);
     ws['!cols'] = cols.map((c, i) => ({ wch: i === 0 ? 6 : i === 2 || i === 3 ? 36 : 18 }));
