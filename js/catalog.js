@@ -112,7 +112,8 @@ function unitWithDef(it) {
 }
 function itemStock(it, branchId) {
   const by = it.stockByBranch || {};
-  if (!branchId || branchId === 'all') return (Number(by[it.mainBranchId] ?? it.openingQty ?? it.stock ?? 0) || 0) - soldOf(it, it.mainBranchId);
+  // "all branches" shows the main branch; items added by hand have no mainBranchId, so they use the main branch too
+  if (!branchId || branchId === 'all') { const mb = it.mainBranchId || mainBranch(); return (Number(by[mb] ?? it.openingQty ?? it.stock ?? 0) || 0) - soldOf(it, mb); }
   return Number(by[branchId] || 0) - soldOf(it, branchId);
 }
 const reorderTone = (stock, rp) => (!rp || rp <= 0 ? '' : stock <= rp ? 'critical' : stock <= rp * 1.2 ? 'warning' : '');
@@ -371,7 +372,7 @@ function itemsPage(view, kind) {
             <div class="field"><label for="fExp">${t('it.expDate')}</label><input type="date" id="fExp" value="${v('fixedExpiryDate')}"><small class="err"></small></div>
           </div></div>` : ''}
         <div class="form-grid">
-          <div class="field"><label for="fOpen">${t('it.opening')}</label>${it ? `<input id="fOpen" value="${esc(fmtNum(Number(it.openingQty ?? (it.stockByBranch || {})[it.mainBranchId] ?? 0), 3))}" readonly dir="ltr"><small class="hint">${t('it.openingLocked')}</small>` : numIn('fOpen', 'openingQty')}</div>
+          <div class="field"><label for="fOpen">${t('it.opening')}</label>${it ? `<input id="fOpen" value="${esc(fmtNum(Number(it.openingQty ?? (it.stockByBranch || {})[it.mainBranchId || mainBranch()] ?? 0), 3))}" readonly dir="ltr"><small class="hint">${t('it.openingLocked')}</small>` : numIn('fOpen', 'openingQty')}</div>
           <div class="field"><label for="fMin">${t('it.min')}</label>${numIn('fMin', 'minStock')}</div>
           <div class="field"><label for="fRe">${t('it.reorder')}</label>${numIn('fRe', 'reorderPoint')}</div>
           <div class="field"><label for="fMax">${t('it.max')}</label>${numIn('fMax', 'maxStock')}</div>
@@ -434,7 +435,7 @@ function itemsPage(view, kind) {
       const cur = id ? (LIVE.cache[C.path] || {})[id] : null;
       if (id && !cur) { toast(t('it.goneElsewhere'), { tone: 'danger', ic: 'alert' }); closeLayers(); return; }
       const openInput = id ? 0 : num('#fOpen');
-      const openingQty = id ? Number(cur.openingQty ?? (cur.stockByBranch || {})[cur.mainBranchId] ?? 0) : openInput;
+      const openingQty = id ? Number(cur.openingQty ?? (cur.stockByBranch || {})[cur.mainBranchId || mainBranch()] ?? 0) : openInput;
       const payload = {
         code: id ? (keepOrReplaceCode(val('#fCode'), C.prefix, id) || fixedCode(C.prefix, usedItemCodes(id))) : normalizeItemCode(val('#fCode'), C.prefix),
         barcode: val('#fBc'), nameAr, nameEn, cost: num('#fCost'),
