@@ -581,14 +581,14 @@ function itemsPage(view, kind) {
   function exportTable(mode) {
     const rows = list(), lvl = mode === 'levels';
     const keys = lvl
-      ? ['ix.no', 'it.code', 'ix.nameAr', 'ix.nameEn', 'it.stock', 'ix.min', 'it.reorder', 'ix.max']
+      ? ['ix.no', 'it.code', 'ix.nameAr', 'ix.nameEn', 'it.stock']
       : ['ix.no', 'it.code', 'ix.nameAr', 'ix.nameEn', ...(isP ? ['it.price'] : []), 'it.cost', 'it.unit', 'it.stock', 'it.category', 'it.storage', 'it.origin', 'ix.min', 'it.reorder', 'ix.max', 'it.barcode'];
     const locText = id => locRows(kind, id).map(x => `${locBi(x.loc)} (${n3(x.qty)})`).join('، ');
     const rowData = (r, i) => {
       const it = r.it, stock = itemStock(it, st.branch);
       const head = [i + 1, it.code || '', it.nameAr || it.name || '', it.nameEn || ''];
       const lim = [Number(it.minStock || 0), Number(it.reorderPoint || 0), Number(it.maxStock || 0)];
-      return lvl ? [...head, stock, ...lim]
+      return lvl ? [...head, stock]
         : [...head, ...(isP ? [Number(it.price || 0)] : []), Number(it.cost || 0), unitWithDef(it), stock, biName(catOf(it.categoryId)), locText(r.id), biName((LIVE.cache.countryOrigins || {})[it.countryOriginId]), ...lim, it.barcode || ''];
     };
     const filters = [
@@ -641,8 +641,8 @@ function itemsPage(view, kind) {
       td{padding:3px 4px;border:1px solid #94a3b8;text-align:center;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word}
       tbody tr:nth-child(even) td{background:#f8fafc}
       td.ar{text-align:right}td.en{text-align:left}td.n{font-variant-numeric:tabular-nums}
-      th.w-name{width:${x.lvl ? 27 : 14}%}th.w-loc{width:10%}th.w-mid{width:7%}
-      table.lvl th:first-child{width:4.5%}table.lvl th:nth-child(2){width:9%}
+      th.w-name{width:${x.lvl ? 35 : 14}%}th.w-loc{width:10%}th.w-mid{width:7%}
+      table.lvl th:first-child{width:5%}table.lvl th:nth-child(2){width:11%}table.lvl th:last-child{width:14%}
       table.full th:first-child{width:3%}table.full th:nth-child(2){width:5.5%}</style></head>
       <body>${secs}</body></html>`;
   }
