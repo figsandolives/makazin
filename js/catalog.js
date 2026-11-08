@@ -532,9 +532,9 @@ function itemsPage(view, kind) {
   function mpCompute(items) {
     const all = Object.entries(items).filter(([, it]) => it && typeof it === 'object');
     const inLoc = st.locs.length ? all.filter(([id]) => matchLoc(id)) : all;
-    const tr = catTree(), catIds = new Set();
-    inLoc.forEach(([, it]) => (tr.chains[it.categoryId] || []).forEach(c => catIds.add(c)));
-    mpOpts.cats = catOpts().filter(([id]) => !st.locs.length || catIds.has(id) || st.cats.includes(id));
+    // only categories that hold products themselves (a folder of sub-categories alone is left out)
+    const catIds = new Set(inLoc.map(([, it]) => it.categoryId).filter(Boolean));
+    mpOpts.cats = catOpts().filter(([id]) => catIds.has(id) || st.cats.includes(id));
     const cs = catSet(), inCat = st.cats.length ? all.filter(([, it]) => cs.has(it.categoryId)) : all;
     mpOpts.locs = [...sortedOpts(LIVE.cache.storageLocations), [LOC_NONE, t('sl.noLocation')]]
       .filter(([loc]) => !st.cats.length || st.locs.includes(loc) || inCat.some(([id]) => inLocation(kind, id, loc)));
