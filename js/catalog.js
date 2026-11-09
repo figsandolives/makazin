@@ -180,6 +180,104 @@ const ITEM_CFG = {
   material: { route: 'stock-materials', path: 'stockMaterials', cats: 'materialCategories', other: 'products', prefix: 'SK', state: 'mat', file: 'stock-materials', sheet: 'StockMaterials', zip: 'material-barcodes.zip', tpl: 'stock-materials-template.xlsx', ic: 'box' }
 };
 
+/* ---------- item references in records ----------
+   Every voucher, sale, stocktake and sticker info that names an item by id. Used to stop
+   deleting an item that has movements (the old page deleted it and its stock with it, and its
+   printed labels could no longer be found), and to list items that were deleted that way so the
+   manager can bring them back under the same id. */
+const ITEM_REF_PATHS = ['production', 'stockIssue', 'transfers', 'cashierTransfers', 'transferRequests', 'stockReturn', 'scrapReturn', 'supplierReturns',
+  'purchases', 'purchaseReceipts', 'pendingStockMoves', 'inventoryCount', 'productInfos', 'orders'];
+const REF_LABEL = { production: 'ic.t.production', stockIssue: 'ic.t.issue', transfers: 'ic.t.transfer', cashierTransfers: 'ic.t.cashierTransfer', transferRequests: 'ic.t.cashierRequest',
+  stockReturn: 'ic.t.stockReturn', scrapReturn: 'ic.t.scrapReturn', supplierReturns: 'ic.t.supplierReturn', purchases: 'dl.purchases', purchaseReceipts: 'ic.t.purchaseReceipt',
+  pendingStockMoves: 'dl.purchases', inventoryCount: 'ic.t.inventory', productInfos: 'dl.infos', orders: 'ic.t.order' };
+const refLabel = path => t(REF_LABEL[path] || path);
+/* Each delete is logged at itemDeletions/{itemId}: who, when, and the item as it was (from 2026-11-09;
+   earlier deletes, and deletes made on the old site, have no log) */
+const ITEM_WATCH = [...ITEM_REF_PATHS, 'itemDeletions'];
+const deletionLog = (type, id, it) => ({ type, nameAr: it.nameAr || it.name || '', nameEn: it.nameEn || '', code: it.code || '', barcode: it.barcode || '',
+  by: (LIVE.user && LIVE.user.id) || null, byName: (LIVE.user && LIVE.user.name) || '', byRole: (LIVE.user && LIVE.user.role) || '', at: LIVE.now(), item: it });
+/* Calls fn(ref) for each line that names an item: { path, recId, type, id, line, rec } */
+function eachItemRef(fn, paths = ITEM_REF_PATHS) {
+  paths.forEach(path => Object.entries(LIVE.cache[path] || {}).forEach(([recId, rec]) => {
+    if (!rec || typeof rec !== 'object') return;
+    const seen = new Set();
+    const walk = (o, depth) => {
+      if (!o || typeof o !== 'object' || depth > 5) return;
+      if (Array.isArray(o)) { o.forEach(x => walk(x, depth + 1)); return; }
+      const id = o.itemId || o.productId;
+      if (typeof id === 'string' && id && !seen.has(o)) {
+        seen.add(o);
+        const type = path === 'orders' || path === 'productInfos' ? 'product' : ivType({ itemType: o.itemType || rec.itemType || 'product' });
+        fn({ path, recId, type, id, line: o, rec });
+      }
+      Object.values(o).forEach(v => { if (v && typeof v === 'object') walk(v, depth + 1); });
+    };
+    walk(rec, 0);
+  }));
+}
+/* How many records of each kind name this item */
+function itemUsage(type, id) {
+  const by = {}, recs = new Set();
+  eachItemRef(r => {
+    if (r.id !== id || r.type !== type || recs.has(`${r.path}/${r.recId}`)) return;
+    recs.add(`${r.path}/${r.recId}`);
+    const k = refLabel(r.path); by[k] = (by[k] || 0) + 1;
+  });
+  return { by, total: recs.size };
+}
+/* Items named in records that are no longer in the products / materials lists */
+function deletedItems(type) {
+  const live = { product: LIVE.cache.products || {}, material: LIVE.cache.stockMaterials || {} };
+  const out = new Map();
+  const pick = (...v) => v.find(x => typeof x === 'string' && x.trim()) || '';
+  eachItemRef(r => {
+    if (r.type !== type || live.product[r.id] || live.material[r.id]) return;
+    const l = r.line, top = l === r.rec;
+    let d = out.get(r.id);
+    if (!d) out.set(r.id, d = { id: r.id, type, nameAr: '', nameEn: '', barcode: '', unitId: '', price: 0, origin: '', ingredients: '', recs: new Set(), by: {}, last: 0, prodQty: 0 });
+    const ts = Number(r.rec.createdAt || r.rec.timestamp || 0) || 0;
+    const newer = ts >= d.last;
+    const ar = pick(l.itemNameAr, l.nameAr, l.productName, /[؀-ۿ]/.test(l.itemName || l.name || '') ? (l.itemName || l.name) : '');
+    const en = pick(l.itemNameEn, l.nameEn, !/[؀-ۿ]/.test(l.itemName || l.name || '') ? (l.itemName || l.name) : '');
+    if (ar && (newer || !d.nameAr)) d.nameAr = ar;
+    if (en && (newer || !d.nameEn)) d.nameEn = en;
+    // The item's own barcode: sticker info and sale lines carry it (a production barcode is the voucher's)
+    if (r.path === 'productInfos' && l.barcode) d.barcode = String(l.barcode);
+    else if (r.path === 'orders' && l.barcode && !d.barcode) d.barcode = String(l.barcode);
+    if (l.unitId && (newer || !d.unitId)) d.unitId = l.unitId;
+    if (r.path === 'orders' && Number(l.price) && (newer || !d.price)) d.price = Number(l.price);
+    if ((l.origin || (top && r.rec.origin)) && !d.origin) d.origin = l.origin || r.rec.origin;
+    if (l.ingredients && !d.ingredients) d.ingredients = l.ingredients;
+    if (r.path === 'production') d.prodQty += Number(l.qty || 0) || 0;
+    const key = `${r.path}/${r.recId}`;
+    if (!d.recs.has(key)) { d.recs.add(key); const k = refLabel(r.path); d.by[k] = (d.by[k] || 0) + 1; }
+    if (ts > d.last) d.last = ts;
+  });
+  // Logged deletes: who deleted it and when (an item deleted with no records shows from its log alone)
+  Object.entries(LIVE.cache.itemDeletions || {}).forEach(([id, g]) => {
+    if (!g || typeof g !== 'object' || (g.type || 'product') !== type || live.product[id] || live.material[id]) return;
+    let d = out.get(id);
+    if (!d) out.set(id, d = { id, type, nameAr: '', nameEn: '', barcode: '', unitId: '', price: 0, origin: '', ingredients: '', recs: new Set(), by: {}, last: 0, prodQty: 0 });
+    d.del = g; d.nameAr ||= g.nameAr || ''; d.nameEn ||= g.nameEn || ''; d.barcode ||= g.barcode || '';
+  });
+  const when = d => Number((d.del && d.del.at) || 0) || d.last;
+  return [...out.values()].filter(d => d.nameAr || d.nameEn).sort((a, b) => when(b) - when(a));
+}
+/* Closest current product or material by name (character pairs in common), to warn before restoring a duplicate */
+function closestItem(type, name) {
+  const pairs = s => { const n = normQ(s).replace(/[ىي]/g, 'ي').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' '); const m = new Map(); for (let i = 0; i < n.length - 1; i++) { const p = n.slice(i, i + 2); m.set(p, (m.get(p) || 0) + 1); } return [m, Math.max(0, n.length - 1)]; };
+  const [a, na] = pairs(name); if (!na) return null;
+  let best = null;
+  [...Object.entries(LIVE.cache.products || {}), ...Object.entries(LIVE.cache.stockMaterials || {})].forEach(([id, it]) => {
+    if (!it || typeof it !== 'object') return;
+    const [b, nb] = pairs(it.nameAr || it.name || ''); if (!nb) return;
+    let common = 0; a.forEach((c, p) => { common += Math.min(c, b.get(p) || 0); });
+    const score = (2 * common) / (na + nb);
+    if (!best || score > best.score) best = { id, it, score };
+  });
+  return best && best.score >= 0.72 ? best : null;
+}
+
 function itemsPage(view, kind) {
   const C = ITEM_CFG[kind], isP = kind === 'product';
   const PATHS = [C.path, C.cats, 'storageLocations', 'countryOrigins', 'branches', 'units'];
@@ -195,6 +293,7 @@ function itemsPage(view, kind) {
       <button class="btn btn-ghost" data-it="export" disabled>${icon('download')}<span>${t('it.exportSel')}</span><em class="sel-n"></em></button>
       <button class="btn btn-ghost" data-it="zip" disabled>${icon('barcode')}<span>${t('it.bcZip')}</span><em class="sel-n"></em></button>
       <button class="btn btn-ghost" data-it="import">${icon('upload')}<span>${t('it.import')}</span></button>
+      <button class="btn btn-ghost" data-it="deleted">${icon('trash')}<span>${t('dl.btn')}</span></button>
       <button class="btn btn-primary" data-it="new">${icon('plus')}<span>${K('new')}</span></button>`, K('sub'))}
     <section class="kpis" id="itK"></section>
     <section class="card pt-head" id="itAlert" hidden></section>
@@ -464,11 +563,26 @@ function itemsPage(view, kind) {
     setTimeout(() => $('#fAr', dr).focus(), 320);
   }
 
+  /* An item with movements or stock is never deleted: its vouchers, sales and printed labels
+     still point to it. The records are read in full first. */
+  let refWatch = null;
+  const refsReady = () => { refWatch ||= LIVE.watch(ITEM_WATCH, () => {}); return LIVE.complete(ITEM_WATCH); };
   async function remove(id) {
     const it = (LIVE.cache[C.path] || {})[id]; if (!it) return;
+    if (!refsReady()) { toast(t('waitAll'), { ic: 'clock' }); await LIVE.whenLoaded(ITEM_WATCH); if (!(LIVE.cache[C.path] || {})[id]) return; }
+    const use = itemUsage(kind, id);
+    const stock = Object.values(it.stockByBranch || {}).reduce((s, q) => s + (Number(q) || 0), 0);
+    if (use.total || Math.abs(stock) > 1e-9) {
+      await confirmDialog({ title: K('cantDelete'), tone: 'danger', icon: 'alert', ok: t('dl.ok'),
+        body: `<div class="cf-sum"><div><small>${t('c.name')}</small><b>${esc(nameOf(it) || '-')}</b></div><div><small>${t('it.code')}</small><b class="mono">${esc(it.code || '-')}</b></div>
+          ${Math.abs(stock) > 1e-9 ? `<div><small>${t('it.stock')}</small><b class="num">${fmtNum(stock, 3)}</b></div>` : ''}
+          ${Object.entries(use.by).map(([k, n]) => `<div><small>${esc(k)}</small><b class="num">${fmtNum(n)}</b></div>`).join('')}</div>
+          <p class="cf-note">${t('dl.blockNote')}</p>` });
+      return;
+    }
     const ok = await confirmDialog({ title: K('deleteQ'), body: `<div class="cf-sum"><div><small>${t('c.name')}</small><b>${esc(nameOf(it) || '-')}</b></div><div><small>${t('it.code')}</small><b class="mono">${esc(it.code || '-')}</b></div></div><p class="cf-note">${t('it.deleteNote')}</p>`, ok: t('delete'), tone: 'danger', icon: 'trash' });
     if (!ok) return;
-    try { await LIVE.update({ [`${C.path}/${id}`]: null }); st.sel.delete(id); toast(t('deleted'), { tone: 'danger' }); }
+    try { await LIVE.update({ [`${C.path}/${id}`]: null, [`itemDeletions/${id}`]: deletionLog(kind, id, it) }); st.sel.delete(id); toast(t('deleted'), { tone: 'danger' }); }
     catch (e) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
   }
 
@@ -723,6 +837,99 @@ function itemsPage(view, kind) {
     } finally { btn.classList.remove('loading'); }
   }
 
+  /* ---------- deleted items still named in records: restore under the same id ----------
+     Brings the item back with the name, barcode, unit and price its records carry, so its
+     vouchers, item card and printed labels find it again. Stock starts at zero (the deleted
+     balance is not kept anywhere): count the item after restoring it. */
+  function openDeleted() {
+    if (!refsReady()) { toast(t('waitAll'), { ic: 'clock' }); LIVE.whenLoaded(ITEM_WATCH).then(openDeleted); return; }
+    if (!afterCatalog([C.other], openDeleted)) return;
+    const dr = freshDrawer(true);
+    const sel = new Set(), restored = new Set();
+    let list = [], busy = false;
+    const n3 = v => fmtNum(Number(v || 0), 3);
+    const body = () => {
+      list = deletedItems(kind).filter(d => !restored.has(d.id));
+      [...sel].forEach(id => { if (!list.some(d => d.id === id)) sel.delete(id); });
+      if (!list.length) return `<div class="empty-state">${icon('check')}<b>${t('dl.none')}</b><small>${t('dl.noneSub')}</small></div>`;
+      return `<p class="dl-note">${icon('alert')}<span>${t('dl.note')}</span></p>
+        <div class="table-wrap"><table class="dt dl-table"><thead><tr><th class="sel-col"><input type="checkbox" id="dlAll" aria-label="${t('it.selectAll')}"></th><th>${t('c.name')}</th><th>${t('dl.byWho')}</th><th>${t('dl.at')}</th><th>${t('dl.where')}</th><th>${t('dl.last')}</th><th>${t('dl.similar')}</th></tr></thead>
+        <tbody>${list.map(d => {
+          const ar = S.lang === 'ar', main = (ar ? d.nameAr : d.nameEn) || d.nameAr || d.nameEn, alt = (ar ? d.nameEn : d.nameAr) || '';
+          const near = closestItem(kind, d.nameAr || d.nameEn);
+          return `<tr data-id="${esc(d.id)}">
+            <td class="sel-col"><input type="checkbox" data-dl ${sel.has(d.id) ? 'checked' : ''} aria-label="${esc(main)}"></td>
+            <td data-label="${t('c.name')}"><span class="cell-2"><b>${esc(main)}</b>${alt && alt !== main ? `<small>${esc(alt)}</small>` : ''}${d.barcode ? `<small class="mono">${esc(d.barcode)}</small>` : ''}</span></td>
+            <td data-label="${t('dl.byWho')}">${d.del ? `<span class="cell-2"><b>${esc(nameOf((LIVE.cache.users || {})[d.del.by]) || (LIVE.cache.users || {})[d.del.by]?.name || d.del.byName || '-')}</b>${d.del.byRole ? `<small>${esc(t('role_' + d.del.byRole))}</small>` : ''}</span>` : `<span class="muted" data-tip="${t('dl.noLogTip')}">${t('dl.noLog')}</span>`}</td>
+            <td data-label="${t('dl.at')}">${d.del && d.del.at ? `<span class="num">${esc(fmtDateTime(d.del.at))}</span>` : `<span class="muted">${t('dl.noLog')}</span>`}</td>
+            <td data-label="${t('dl.where')}"><span class="dl-where">${!d.recs.size ? '<span class="muted">—</span>' : ''}${Object.entries(d.by).map(([k, n]) => `<span>${esc(k)} <b class="num">${fmtNum(n)}</b></span>`).join('')}</span></td>
+            <td data-label="${t('dl.last')}"><span class="num">${d.last ? esc(fmtDate(d.last)) : '—'}</span></td>
+            <td data-label="${t('dl.similar')}">${near ? `<span class="dl-near">${icon('alert')}<span>${esc(nameOf(near.it))}<small class="mono">${esc(near.it.code || '')}</small></span></span>` : '<span class="muted">—</span>'}</td></tr>`;
+        }).join('')}</tbody></table></div>`;
+    };
+    const sync = () => {
+      const all = $('#dlAll', dr);
+      if (all) { all.checked = list.length > 0 && sel.size === list.length; all.indeterminate = sel.size > 0 && sel.size < list.length; }
+      $('#dlGo', dr).disabled = busy || !sel.size;
+      $('#dlGoTxt', dr).textContent = t('dl.go').replace('{n}', sel.size || '');
+    };
+    const paint = () => { $('#dlBody', dr).innerHTML = body(); $('#dlCount', dr).textContent = list.length ? `${fmtNum(list.length)} ${t('it.items')}` : ''; sync(); };
+    dr.innerHTML = `
+      <header class="dr-head"><span class="ph-ic sm">${icon('trash')}</span><div><h2 id="drawerTitle">${K('deletedTitle')}</h2><p>${t('dl.sub')}</p></div>
+        <button class="btn-icon" data-close aria-label="${t('close')}">${icon('x')}</button></header>
+      <div class="dr-body" id="dlBody"></div>
+      <footer class="dr-foot"><button class="btn btn-ghost" data-close>${t('close')}</button><small class="muted" id="dlCount"></small><span class="tb-spacer"></span>
+        <button class="btn btn-primary" id="dlGo" disabled>${icon('refresh')}<span id="dlGoTxt"></span></button></footer>`;
+    openLayer('#drawer');
+    paint();
+    // Redrawn while open when an item or a record changes (another device, or data still arriving)
+    let tm = 0;
+    const watched = new Set([...ITEM_WATCH, 'products', 'stockMaterials', 'users']);
+    const off = LIVE.listen(path => {
+      if (!$('#dlBody', dr)) { off(); clearTimeout(tm); return; }
+      if (watched.has(path) && !busy) { clearTimeout(tm); tm = setTimeout(() => { if ($('#dlBody', dr)) paint(); }, 200); }
+    });
+    dr.onclick = e => {
+      if (e.target.id === 'dlAll') { if (e.target.checked) list.forEach(d => sel.add(d.id)); else sel.clear(); paint(); return; }
+      const cb = e.target.closest('[data-dl]');
+      if (cb) { const id = cb.closest('tr').dataset.id; if (cb.checked) sel.add(id); else sel.delete(id); sync(); }
+    };
+    $('#dlGo', dr).addEventListener('click', async () => {
+      const picked = list.filter(d => sel.has(d.id)); if (!picked.length || busy) return;
+      const ok = await confirmDialog({ title: t('dl.confirmQ').replace('{n}', picked.length), ok: t('dl.restore'), icon: 'refresh',
+        body: `<p class="cf-note">${t('dl.confirmNote')}</p>` });
+      if (!ok) return;
+      const used = usedItemCodes(), main = mainBranch();
+      const bcs = new Set(); [LIVE.cache.products, LIVE.cache.stockMaterials].forEach(l => Object.values(l || {}).forEach(it => it && it.barcode && bcs.add(String(it.barcode))));
+      const units = LIVE.cache.units || {}, origins = LIVE.cache.countryOrigins || {};
+      const originId = name => { if (!name) return null; if (origins[name]) return name; const q = normQ(name); const hit = Object.entries(origins).find(([, o]) => o && [o.nameAr, o.nameEn, o.name].some(n => n && normQ(n) === q)); return hit ? hit[0] : null; };
+      const up = {};
+      picked.forEach(d => {
+        const bc = d.barcode && !bcs.has(d.barcode) ? d.barcode : '';
+        if (bc) bcs.add(bc);
+        const snap = d.del && d.del.item && typeof d.del.item === 'object' ? d.del.item : null;
+        if (snap) {
+          const code = snap.code && !used.has(String(snap.code).trim().toUpperCase()) ? snap.code : fixedCode(C.prefix, used);
+          used.add(String(code).trim().toUpperCase());
+          up[`${C.path}/${d.id}`] = { ...snap, code, barcode: snap.barcode && (snap.barcode === bc || !bcs.has(String(snap.barcode))) ? snap.barcode : bc, restoredAt: LIVE.now() };
+          if (snap.barcode) bcs.add(String(snap.barcode));
+          return;
+        }
+        up[`${C.path}/${d.id}`] = {
+          code: fixedCode(C.prefix, used), barcode: bc, nameAr: d.nameAr || d.nameEn, nameEn: d.nameEn || '', cost: 0,
+          ...(isP ? { price: d.price || 0 } : {}),
+          unitId: units[d.unitId] ? d.unitId : null, countryOriginId: originId(d.origin),
+          openingQty: 0, minStock: 0, reorderPoint: 0, maxStock: 0, mainBranchId: main, stockByBranch: main ? { [main]: 0 } : {},
+          incompleteInfo: true, missingInfo: true, restoredFromRecords: true, restoredAt: LIVE.now(), createdAt: d.last || LIVE.now()
+        };
+      });
+      busy = true; const btn = $('#dlGo', dr); btn.classList.add('loading'); sync();
+      try { await LIVE.update(up); picked.forEach(d => restored.add(d.id)); sel.clear(); toast(t('dl.done').replace('{n}', picked.length)); }
+      catch (ex) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
+      finally { busy = false; btn.classList.remove('loading'); if (dr.isConnected) paint(); }
+    });
+  }
+
   /* ---------- bulk import from Excel ---------- */
   function openImport() {
     if (!afterCatalog([C.other], openImport)) return;
@@ -860,6 +1067,7 @@ function itemsPage(view, kind) {
     if (a === 'back') { st.alert = null; st.page = 1; draw(); return; }
     if (a === 'new') return openForm(null);
     if (a === 'import') return openImport();
+    if (a === 'deleted') return openDeleted();
     if (a === 'export') return exportSelected();
     if (a === 'zip') return barcodesZip(b);
     const id = b.closest('tr') && b.closest('tr').dataset.id; if (!id) return;
