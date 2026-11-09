@@ -803,7 +803,8 @@ PAGES.stocktake = view => voucherPage(view, {
     kpiCard({ label: t('iv.ic.kDiff30'), value: rows.filter(x => inLast30(x.r)).reduce((s, x) => s + x.items.filter(i => i.previousQty != null && Math.abs(Number(i.previousQty) - i.qty) > 1e-9).length, 0), ic: 'alert', tone: 'c4', drill: 'diff30' }), kpiAll(rows, t('iv.kTotal'))],
   init: r => ({ branchId: r ? r.branchId || '' : '', storageId: r ? r.storageLocationId || '' : '' }),
   stockBranch: d => d.branchId,
-  pickFilter: (e, d) => !(isMainBranch(d.branchId) && d.storageId) || inLocation(e.type, e.id, d.storageId),
+  // An item not kept anywhere yet (no location) can be counted in any location; the count places it there
+  pickFilter: (e, d) => !(isMainBranch(d.branchId) && d.storageId) || inLocation(e.type, e.id, d.storageId) || !locRows(e.type, e.id).length,
   locCount: d => (isMainBranch(d.branchId) && d.storageId ? d.storageId : null),
   fields: d => `
     <div class="field"><label for="fBr">${t('c.branch')} <em>*</em></label><div class="select"><select id="fBr">${branchOpts(d.branchId)}</select>${icon('chevDown')}</div><small class="err"></small></div>
@@ -839,7 +840,10 @@ PAGES.stocktake = view => voucherPage(view, {
       if (!itemData(c.type, c.id)) return;
       const o = same ? old.get(key) : null;
       if (o) { const diff = c.qty - o.qty; if (Math.abs(diff) > 1e-9) move(c.type, c.id, b, L, diff); }
-      else if (L) { up[stockKey(c.type, c.id, b)] = LIVE.increment(c.qty - prevOf.get(key)); up[locPath(c.type, c.id, L)] = c.qty; }
+      else if (L) {
+        up[stockKey(c.type, c.id, b)] = LIVE.increment(c.qty - prevOf.get(key)); up[locPath(c.type, c.id, L)] = c.qty;
+        if (!locList()[(itemData(c.type, c.id) || {}).storageLocationId]) up[`${itemPath(c.type, c.id)}/storageLocationId`] = L; // first place of an unplaced item
+      }
       else up[stockKey(c.type, c.id, b)] = c.qty + (c.type === 'product' ? soldQty(c.id, b) : 0); // shown = stored − sales
     });
     if (cur) {
