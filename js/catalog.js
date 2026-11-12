@@ -8,7 +8,8 @@
 /* ---------- libraries (same versions as the old page), loaded only when needed ---------- */
 const LIBS = {
   JsBarcode: 'https://unpkg.com/jsbarcode@3.11.6/dist/JsBarcode.all.min.js',
-  XLSX: 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+  // SheetJS 0.18.5 with cell styles (same API): the Excel export is laid out like the PDF
+  XLSX: 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js',
   JSZip: 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'
 };
 const libLoads = {};
@@ -747,30 +748,33 @@ function itemsPage(view, kind) {
     };
     const filters = [
       st.locs.length && [biText('it.storage'), st.locs.map(locBi).join('، ')],
-      st.cats.length && [biText('it.category'), st.cats.map(catBi).join('، ')],
       st.branch !== 'all' && [biText('c.branch'), branchLabel(st.branch)],
       st.origin !== 'all' && [biText('it.origin'), biName((LIVE.cache.countryOrigins || {})[st.origin])],
       st.alert && [biText('it.reorder'), biText(st.alert === 'critical' ? 'it.kCritical' : 'it.kWarning')],
       st.q && [biText('ix.search'), st.q]
     ].filter(Boolean);
-    return { rows, keys, rowData, filters, lvl, qN: stockKeys.length };
+    // The chosen categories are not listed under the title (every section is titled by its category); the file name keeps them
+    const tag = [...(st.cats.length ? [st.cats.map(catBi).join('، ')] : []), ...filters.map(f => f[1])];
+    return { rows, keys, rowData, filters, tag, lvl, qN: stockKeys.length };
   }
-  function pdfHtml(x) {
-    // One section per category, each starting on a new page
+  /* One section per category, in the category tree order — the PDF and the Excel file share it */
+  function exportGroups(x) {
     const groups = new Map();
     x.rows.forEach(r => { const k = r.it.categoryId && catOf(r.it.categoryId) ? r.it.categoryId : ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
     const tr = catTree();
     const order = [...groups.keys()].sort((a, b) => (!a ? 1 : !b ? -1 : tr.sortKey(a).localeCompare(tr.sortKey(b), 'ar')));
+    const [noA, noE] = bi('ix.noCat');
+    return order.map(k => ({ rs: groups.get(k), ar: k ? catLabel(k, 'ar') : noA, en: k ? catLabel(k, 'en') : noE }));
+  }
+  function pdfHtml(x) {
+    // Each section starts on a new page
     const [titleAr, titleEn] = bi(x.lvl ? 'ix.levelsTitle' : 'ix.allTitle'), [kindAr, kindEn] = bi(C.route);
     const wide = { 'ix.nameAr': 'w-name', 'ix.nameEn': 'w-name', 'it.storage': 'w-loc', 'it.category': 'w-mid', 'it.unit': 'w-mid', 'it.origin': 'w-mid' };
     const head = `<tr>${x.keys.map(k => { const [a, e] = bi(k); return `<th class="${wide[k] || ''}">${esc(a)}${e ? `<small>${esc(e)}</small>` : ''}</th>`; }).join('')}</tr>`;
     const cell = (v, j) => `<td class="${j === 2 ? 'ar' : j === 3 ? 'en' : typeof v === 'number' ? 'n' : ''}"${j === 3 ? ' dir="ltr"' : ''}>${esc(j === 0 ? String(v) : typeof v === 'number' ? fmtNum(v, 3) : v)}</td>`;
     const when = fmtDateTime(Date.now());
     const filt = x.filters.length ? `<div class="filters">${x.filters.map(([k, v]) => `<span><small>${esc(k)}:</small> ${esc(v)}</span>`).join('')}</div>` : '';
-    const secs = order.map(k => {
-      const rs = groups.get(k), c = k ? catOf(k) : null;
-      const [noA, noE] = bi('ix.noCat');
-      const ar = c ? catLabel(k, 'ar') : noA, en = c ? catLabel(k, 'en') : noE;
+    const secs = exportGroups(x).map(({ rs, ar, en }) => {
       return `<section class="sec">
         <header class="top"><div><b class="brand">رصيد · Raseed</b><span>${esc(kindAr)} · ${esc(titleAr)}</span><span dir="ltr">${esc(kindEn)} · ${esc(titleEn)}</span></div><div class="when">${esc(when)}</div></header>
         <h1>${esc(ar)}${en && en !== ar ? `<small dir="ltr">${esc(en)}</small>` : ''}<em>${fmtNum(rs.length)} ${esc(biText('ix.itemsN'))}</em></h1>
@@ -806,15 +810,43 @@ function itemsPage(view, kind) {
     if (!x.rows.length) { toast(t('ix.empty'), { tone: 'danger', ic: 'alert' }); return; }
     if (fmt === 'pdf') { printHtml(pdfHtml(x)); return; }
     try { await needLib('XLSX'); } catch (e) { libFailed(); return; }
-    const cols = [...x.keys.map(biText), biText('it.category')];
-    const data = x.rows.map((r, i) => [...x.rowData(r, i), catBi(r.it.categoryId)]);
-    if (!x.lvl) { cols.pop(); data.forEach(d => d.pop()); }
-    const ws = XLSX.utils.aoa_to_sheet([...x.filters.map(f => [f[0], f[1]]), ...(x.filters.length ? [[]] : []), cols, ...data]);
-    ws['!cols'] = cols.map((c, i) => ({ wch: i === 0 ? 6 : i === 2 || i === 3 ? 36 : 18 }));
+    // Same layout as the PDF: a titled section per category, the same columns in the same order, the same colours
+    const n = x.keys.length, last = n - 1, aoa = [], merges = [], heights = [];
+    const [titleAr, titleEn] = bi(x.lvl ? 'ix.levelsTitle' : 'ix.allTitle'), [kindAr, kindEn] = bi(C.route);
+    const when = fmtDateTime(Date.now());
+    const line = (c, e) => ({ style: 'thin', color: { rgb: c } }), box = c => ({ top: line(c), bottom: line(c), left: line(c), right: line(c) });
+    const font = (o = {}) => ({ name: 'Arial', sz: 10, color: { rgb: '0F172A' }, ...o });
+    const mid = { horizontal: 'center', vertical: 'center', wrapText: true };
+    const S_ = {
+      brand: { font: font({ bold: true, color: { rgb: '16A34A' } }), alignment: { horizontal: 'right', vertical: 'center', readingOrder: 2 }, border: { bottom: { style: 'medium', color: { rgb: '16A34A' } } } },
+      h1: { font: font({ sz: 18, bold: true }), alignment: { ...mid, readingOrder: 2 } },
+      h2: { font: font({ sz: 13, bold: true, color: { rgb: '334155' } }), alignment: { ...mid, readingOrder: 1 } },
+      sub: { font: font({ sz: 9, color: { rgb: '64748B' } }), alignment: mid },
+      th: { font: font({ bold: true }), fill: { fgColor: { rgb: 'E2E8F0' } }, alignment: mid, border: box('64748B') }
+    };
+    const td = (j, v, even) => ({ font: font(), alignment: { ...mid, horizontal: j === 2 ? 'right' : j === 3 ? 'left' : 'center', ...(j === 2 ? { readingOrder: 2 } : j === 3 ? { readingOrder: 1 } : {}) },
+      border: box('94A3B8'), ...(even ? { fill: { fgColor: { rgb: 'F8FAFC' } } } : {}), ...(typeof v === 'number' && j ? { numFmt: Number.isInteger(v) ? '0' : '0.###' } : {}) });
+    const cell = (v, s) => ({ v, t: typeof v === 'number' ? 'n' : 's', s });
+    const wideRow = (v, s, h) => { merges.push({ s: { r: aoa.length, c: 0 }, e: { r: aoa.length, c: last } }); heights[aoa.length] = h; aoa.push([cell(v, s), ...Array(last).fill(cell('', s))]); };
+    exportGroups(x).forEach(({ rs, ar, en }, g) => {
+      if (g) aoa.push([]);
+      wideRow(`رصيد · Raseed   |   ${kindAr} · ${titleAr}   |   ${kindEn} · ${titleEn}   |   ${when}`, S_.brand, 20);
+      wideRow(ar, S_.h1, 30);
+      if (en && en !== ar) wideRow(en, S_.h2, 22);
+      wideRow(`${fmtNum(rs.length)} ${biText('ix.itemsN')}${x.filters.length ? '   ·   ' + x.filters.map(([k, v]) => `${k}: ${v}`).join('   ·   ') : ''}`, S_.sub, 16);
+      heights[aoa.length] = 30;
+      aoa.push(x.keys.map(k => cell(bi(k).join('\n'), S_.th)));
+      rs.forEach((r, i) => aoa.push(x.rowData(r, i).map((v, j) => cell(v, td(j, v, i % 2 === 1)))));
+    });
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = merges;
+    ws['!rows'] = Array.from({ length: aoa.length }, (_, i) => (heights[i] ? { hpt: heights[i] } : {}));
+    const wch = { 'ix.no': 5, 'it.code': 11, 'ix.nameAr': 34, 'ix.nameEn': 34, 'it.unit': 13, 'it.category': 30, 'it.storage': 26, 'it.origin': 13, 'it.barcode': 16 };
+    ws['!cols'] = x.keys.map(k => ({ wch: typeof k === 'string' ? wch[k] || 9 : 13 }));
     const wb = XLSX.utils.book_new();
     wb.Workbook = { Views: [{ RTL: true }] };
     XLSX.utils.book_append_sheet(wb, ws, x.lvl ? 'Stock levels' : C.sheet);
-    const tag = [x.lvl ? 'stock-levels' : 'all', ...x.filters.map(f => f[1])].join('-');
+    const tag = [x.lvl ? 'stock-levels' : 'all', ...x.tag].join('-');
     XLSX.writeFile(wb, `${C.file}-${fileSafe(tag).slice(0, 80)}.xlsx`);
     toast(t('exported'));
   }
