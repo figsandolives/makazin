@@ -2092,3 +2092,10 @@ section.kd-chips .kd-chip b { font-size: 1.3rem; }
 .dl-near .ic { width: 15px; height: 15px; flex: none; }
 .dl-near > span { display: flex; flex-direction: column; color: var(--text); }
 .dl-near small { color: var(--text-3); }
+
+/* Gulf country flag + picker beside phone numbers (customers) */
+.cc-flag { width: 20px; height: 14px; flex: none; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.18); vertical-align: middle; }
+.cc-phone { display: inline-flex; align-items: center; gap: 6px; }
+.cc-row { display: flex; gap: 8px; }
+.cc-row > input { flex: 1; min-width: 0; }
+.cc-row .cc-sel { flex: none; width: 150px; }

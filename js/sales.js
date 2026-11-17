@@ -22,6 +22,36 @@ const oNum = o => (o && (o.orderNumber || o.invoiceNumber || o.invoiceNo || o.or
 /* Orders are tied to customers by phone number (the cashier saves the customer's name and phone
    on the order, not its id) — customerId is used only when an order carries a valid one. */
 const phoneKey = v => { const d = toLatin(String(v || '')).replace(/\D/g, '').replace(/^00965/, '').replace(/^965(?=\d{8}$)/, ''); return d; };
+/* Gulf numbers, same rule as the cashier: saved as country code + local digits (965XXXXXXXX, 971XXXXXXXXX…);
+   a bare 8-digit number is Kuwaiti. len = local digits after the code. */
+const GCC_COUNTRIES = [{ cc: '965', iso: 'KW', len: 8 }, { cc: '966', iso: 'SA', len: 9 }, { cc: '971', iso: 'AE', len: 9 },
+  { cc: '974', iso: 'QA', len: 8 }, { cc: '973', iso: 'BH', len: 8 }, { cc: '968', iso: 'OM', len: 8 }];
+const gccDigits = v => toLatin(String(v || '')).replace(/\D/g, '').replace(/^00/, '');
+const gccLocalOk = (local, c) => local.length === c.len && !new RegExp(`^(\\d)\\1{${c.len - 1}}$`).test(local);
+function gccPhone(v) {
+  const d = gccDigits(v);
+  for (const c of GCC_COUNTRIES) if (d.length === c.cc.length + c.len && d.startsWith(c.cc)) return gccLocalOk(d.slice(c.cc.length), c) ? d : '';
+  return gccLocalOk(d, GCC_COUNTRIES[0]) ? `965${d}` : '';
+}
+/* Country picked in the form + typed number (a full number with its own code wins) */
+function gccCompose(cc, v) {
+  const d = gccDigits(v);
+  if (d.length > 8 && gccPhone(d)) return gccPhone(d);
+  const c = GCC_COUNTRIES.find(x => x.cc === cc) || GCC_COUNTRIES[0], local = d.replace(/^0+/, '');
+  return local.length === c.len ? gccPhone(c.cc + local) : '';
+}
+const gccCountry = v => { const p = gccPhone(v); return p ? GCC_COUNTRIES.find(c => p.startsWith(c.cc)) : null; };
+function gccFlag(iso) {
+  const teeth = (x, depth, n) => { const p = ['0,0', `${x},0`]; for (let i = 0; i < n; i++) p.push(`${x + depth},${(i * 2 + 1) * 10 / n}`, `${x},${(i + 1) * 20 / n}`); p.push('0,20'); return `<polygon points="${p.join(' ')}" fill="#fff"/>`; };
+  const tri = (a, b, c) => `<rect width="30" height="6.67" fill="${a}"/><rect y="6.67" width="30" height="6.67" fill="${b}"/><rect y="13.33" width="30" height="6.67" fill="${c}"/>`;
+  const body = { KW: `${tri('#007a3d', '#fff', '#ce1126')}<polygon points="0,0 7.5,6.67 7.5,13.33 0,20" fill="#000"/>`,
+    SA: '<rect width="30" height="20" fill="#006c35"/><rect x="8" y="6" width="14" height="3.2" rx="1" fill="#fff"/><rect x="8" y="12.4" width="14" height="1.3" fill="#fff"/>',
+    AE: `${tri('#00732f', '#fff', '#000')}<rect width="7.5" height="20" fill="#ff0000"/>`,
+    QA: `<rect width="30" height="20" fill="#8a1538"/>${teeth(8, 3, 9)}`, BH: `<rect width="30" height="20" fill="#ce1126"/>${teeth(8, 4, 5)}`,
+    OM: `${tri('#fff', '#db161b', '#008000')}<rect width="8" height="20" fill="#db161b"/>` }[iso] || '';
+  return `<svg class="cc-flag" viewBox="0 0 30 20" aria-hidden="true">${body}</svg>`;
+}
+const gccOpts = sel => GCC_COUNTRIES.map(c => `<option value="${c.cc}" ${c.cc === sel ? 'selected' : ''}>${t('cc.' + c.iso)} +${c.cc}</option>`).join('');
 let custIdxSrc = null, custIdx = new Map();
 function custPhoneIndex() {
   const cs = LIVE.cache.customers || {};
@@ -799,7 +829,7 @@ const custOrderType = o => oType(o);
 const productsAmount = o => Number(o.subtotal ?? o.netTotal ?? (Number(o.total || 0) - Number(o.deliveryFee || 0)));
 
 PAGES.customers = view => {
-  const st = (S.cu ||= { q: '', zones: [], level: 'all', sort: 'desc', from: '', to: '', blocked: false, per: 10, page: 1, sel: new Set(), detail: null, fav: null, imp: null, drill: null });
+  const st = (S.cu ||= { q: '', zones: [], level: 'all', country: 'all', sort: 'desc', from: '', to: '', blocked: false, per: 10, page: 1, sel: new Set(), detail: null, fav: null, imp: null, drill: null });
   let first = true, pageIds = [], saving = false, zones = null;
   let statsAll = {};
   // Area filter: the cashier's areas + any other area written on a customer's address
@@ -830,10 +860,10 @@ PAGES.customers = view => {
     return Object.entries(LIVE.cache.customers || {}).filter(([, c]) => c && typeof c === 'object').map(([id, c]) => {
       const s = range[id] || { total: 0, count: 0, first: null, last: null };
       const areas = custAreas(c);
-      return { id, c, areas, zone: areas[0] || '-', addr: custAddressText(c), last: s.last, count: s.count,
+      return { id, c, areas, zone: areas[0] || '-', addr: custAddressText(c), last: s.last, count: s.count, cc: (gccCountry(c.phone) || { cc: 'other' }).cc,
         avg: statAvg(s), gap: statGap(s), level: levelOf(id, c, r) };
     }).filter(x => (!st.zones.length || x.areas.some(z => st.zones.includes(z)))
-      && (st.level === 'all' || x.level === st.level) && (!st.blocked || x.c.isBlocked) && (!useRange || x.count > 0)
+      && (st.level === 'all' || x.level === st.level) && (st.country === 'all' || x.cc === st.country) && (!st.blocked || x.c.isBlocked) && (!useRange || x.count > 0)
       && (!q || normQ(`${nameOf(x.c)} ${x.c.phone || ''} ${x.zone} ${x.addr}`).includes(q)))
       .sort((a, b) => ((b.count - a.count) * (st.sort === 'asc' ? -1 : 1)) || ((b.last || 0) - (a.last || 0)));
   }
@@ -856,6 +886,7 @@ PAGES.customers = view => {
         <div class="toolbar it-tools">
           <label class="search-field">${icon('search')}<input type="search" id="cuQ" placeholder="${t('cu.searchPh')}" value="${esc(st.q)}" autocomplete="off"></label>
           ${msHtml('cuZones')}
+          <div class="select tb-select"><select id="cuCountry" aria-label="${t('cu.country')}"><option value="all">${t('cu.ccAll')}</option>${GCC_COUNTRIES.map(c => `<option value="${c.cc}" ${st.country === c.cc ? 'selected' : ''}>${t('cc.' + c.iso)}</option>`).join('')}<option value="other" ${st.country === 'other' ? 'selected' : ''}>${t('cu.ccOther')}</option></select>${icon('chevDown')}</div>
           <div class="select tb-select"><select id="cuLevel" aria-label="${t('cu.level')}">${['all', 'regular', 'vip', 'vvip'].map(k => `<option value="${k}" ${st.level === k ? 'selected' : ''}>${t('cu.lv.' + k)}</option>`).join('')}</select>${icon('chevDown')}</div>
           <div class="select tb-select"><select id="cuSort" aria-label="${t('it.sort')}"><option value="desc" ${st.sort === 'desc' ? 'selected' : ''}>${t('cu.sortDesc')}</option><option value="asc" ${st.sort === 'asc' ? 'selected' : ''}>${t('cu.sortAsc')}</option></select>${icon('chevDown')}</div>
           <label class="date-field"><small>${t('c.from')}</small><input type="date" id="cuFrom" value="${st.from}"></label>
@@ -871,7 +902,7 @@ PAGES.customers = view => {
     zones = msControl($('#cuZones', view), { items: areaItems, get: () => st.zones, set: v => { st.zones = v; st.page = 1; zones.paint(); draw(); } });
     let deb;
     $('#cuQ', view).addEventListener('input', e => { clearTimeout(deb); deb = setTimeout(() => { st.q = e.target.value.trim(); st.page = 1; draw(); }, 150); });
-    [['#cuLevel', 'level'], ['#cuSort', 'sort'], ['#cuFrom', 'from'], ['#cuTo', 'to']].forEach(([sel, k]) => $(sel, view).addEventListener('change', e => { st[k] = e.target.value; st.page = 1; draw(); }));
+    [['#cuCountry', 'country'], ['#cuLevel', 'level'], ['#cuSort', 'sort'], ['#cuFrom', 'from'], ['#cuTo', 'to']].forEach(([sel, k]) => $(sel, view).addEventListener('change', e => { st[k] = e.target.value; st.page = 1; draw(); }));
     $('#cuBlocked', view).addEventListener('change', e => { st.blocked = e.target.checked; st.page = 1; draw(); });
     $('[data-per]', view).addEventListener('change', e => { st.per = +e.target.value; st.page = 1; draw(); });
     bindSelection(view, st, () => pageIds, () => selectionBits(view, st, pageIds));
@@ -896,11 +927,11 @@ PAGES.customers = view => {
     setHtml($('#cuPager', view), pagerHtml(st, list.length));
     const slice = list.slice((st.page - 1) * st.per, st.page * st.per);
     pageIds = slice.map(x => x.id);
-    const filtering = st.q || st.zones.length || st.level !== 'all' || st.blocked || st.from || st.to;
+    const filtering = st.q || st.zones.length || st.level !== 'all' || st.country !== 'all' || st.blocked || st.from || st.to;
     setHtml(body, slice.length ? slice.map((x, i) => `<tr data-id="${esc(x.id)}" class="${first ? 'row-in' : ''}" style="--r:${i}">
       <td class="sel-col"><input type="checkbox" data-sel ${st.sel.has(x.id) ? 'checked' : ''} aria-label="${esc(nameOf(x.c))}"></td>
       <td data-label="${t('c.name')}"><button type="button" class="person link-person" data-cu="details"><span class="av" style="--h:${hue(x.c.phone || x.id)}">${esc((nameOf(x.c) || '?').trim()[0] || '?')}</span><b>${esc(nameOf(x.c) || '-')}</b></button></td>
-      <td data-label="${t('c.phone')}">${x.c.phone ? `<a class="mono link-plain" href="tel:${esc(String(x.c.phone).replace(/\s+/g, ''))}">${esc(x.c.phone)}</a>` : '<span class="muted">—</span>'}</td>
+      <td data-label="${t('c.phone')}">${x.c.phone ? `<span class="cc-phone">${gccCountry(x.c.phone) ? gccFlag(gccCountry(x.c.phone).iso) : ''}<a class="mono link-plain" href="tel:+${esc(gccPhone(x.c.phone) || String(x.c.phone).replace(/\D/g, ''))}">${esc(x.c.phone)}</a></span>` : '<span class="muted">—</span>'}</td>
       <td data-label="${t('o.zone')}">${esc(x.zone)}</td>
       <td data-label="${t('o.address')}"><span class="clip" title="${esc(x.addr)}">${esc(x.addr)}</span></td>
       <td data-label="${t('cu.lastOrder')}"><span class="date">${x.last ? fmtDateTime(x.last) : '—'}</span></td>
@@ -1036,7 +1067,7 @@ PAGES.customers = view => {
   const phoneTaken = (phone, exceptId) => { const k = phoneKey(phone); return !!k && Object.entries(LIVE.cache.customers || {}).some(([id, c]) => id !== exceptId && c && phoneKey(c.phone) === k); };
   // Same phone format and phone index as the cashier (it finds customers by customerPhoneIndex/965XXXXXXXX)
   // Same rule as the cashier: 8 digits, not a filler like 00000000
-  const cashierPhone = v => { const k = phoneKey(v); return /^\d{8}$/.test(k) && !/^(\d)\1{7}$/.test(k) ? `965${k}` : ''; };
+  const cashierPhone = v => gccPhone(v);
 
   function openNew() {
     const dr = freshDrawer(false);
@@ -1044,7 +1075,7 @@ PAGES.customers = view => {
       <header class="dr-head"><span class="ph-ic sm">${icon('user')}</span><div><h2 id="drawerTitle">${t('cu.new')}</h2><p>${t('fillForm')}</p></div><button class="btn-icon" data-close aria-label="${t('close')}">${icon('x')}</button></header>
       <form class="dr-body it-form" id="cuForm" novalidate>
         <div class="field"><label for="nName">${t('c.name')} <em>*</em></label><input id="nName" autocomplete="off"><small class="err"></small></div>
-        <div class="field"><label for="nPhone">${t('c.phone')} <em>*</em></label><input id="nPhone" dir="ltr" inputmode="tel" autocomplete="off"><small class="err"></small></div>
+        <div class="field"><label for="nPhone">${t('c.phone')} <em>*</em></label><div class="cc-row"><div class="select cc-sel"><select id="nCc" aria-label="${t('cu.country')}">${gccOpts('965')}</select>${icon('chevDown')}</div><input id="nPhone" dir="ltr" inputmode="tel" autocomplete="off"></div><small class="err"></small></div>
         <label class="check-line"><input type="checkbox" id="nOnly"> ${t('cu.nameOnly')}</label>
         <div class="def-wrap" id="nAddr"><div class="field"><label for="nZone">${t('o.zone')}</label><div class="select"><select id="nZone">${zoneOpts('')}</select>${icon('chevDown')}</div></div>
           <div class="field"><label for="nDet">${t('cu.addrDetails')}</label><input id="nDet" autocomplete="off"></div></div>
@@ -1060,12 +1091,13 @@ PAGES.customers = view => {
       const zoneId = $('#nZone', dr).value, details = $('#nDet', dr).value.trim();
       let bad = false;
       if (!name) { err('#nName', t('required')); bad = true; }
-      if (!phone) { err('#nPhone', t('required')); bad = true; } else if (!cashierPhone(phone)) { err('#nPhone', t('cu.phoneBad')); bad = true; } else if (phoneTaken(phone)) { err('#nPhone', t('cu.phoneTaken')); bad = true; }
+      const full = gccCompose($('#nCc', dr).value, phone);
+      if (!phone) { err('#nPhone', t('required')); bad = true; } else if (!full) { err('#nPhone', t('cu.phoneBad')); bad = true; } else if (phoneTaken(full)) { err('#nPhone', t('cu.phoneTaken')); bad = true; }
       if (bad) return;
       const addr = !only && (zoneId || details) ? [{ area: zoneId || '', details: details || '' }] : [];
       const btn = $('#nSave', dr); saving = true; btn.classList.add('loading');
       try {
-        const id = LIVE.newKey('customers'), ph = cashierPhone(phone);
+        const id = LIVE.newKey('customers'), ph = full;
         await LIVE.update({ [`customers/${id}`]: clean({ id, name, phone: ph, addresses: addr, createdAt: LIVE.now() }), [`customerPhoneIndex/${ph}`]: id });
         toast(t('added')); closeLayers();
       } catch (ex) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
@@ -1085,7 +1117,7 @@ PAGES.customers = view => {
       <header class="dr-head"><span class="ph-ic sm">${icon('pencil')}</span><div><h2 id="drawerTitle">${t('cu.editTitle')}</h2><p>${esc(nameOf(c) || '-')}</p></div><button class="btn-icon" data-close aria-label="${t('close')}">${icon('x')}</button></header>
       <form class="dr-body it-form" id="cuForm" novalidate>
         <div class="field"><label for="uName">${t('c.name')} <em>*</em></label><input id="uName" value="${esc(nameOf(c))}" autocomplete="off"><small class="err"></small></div>
-        <div class="field"><label for="uPhone">${t('c.phone')} <em>*</em></label><input id="uPhone" dir="ltr" inputmode="tel" value="${esc(c.phone || '')}" autocomplete="off"><small class="err"></small></div>
+        <div class="field"><label for="uPhone">${t('c.phone')} <em>*</em></label><div class="cc-row"><div class="select cc-sel"><select id="uCc" aria-label="${t('cu.country')}">${gccOpts((gccCountry(c.phone) || GCC_COUNTRIES[0]).cc)}</select>${icon('chevDown')}</div><input id="uPhone" dir="ltr" inputmode="tel" value="${esc(gccCountry(c.phone) ? gccPhone(c.phone).slice(3) : (c.phone || ''))}" autocomplete="off"></div><small class="err"></small></div>
         <div class="draft-head"><b>${t('cu.addresses')}</b><button type="button" class="btn btn-soft btn-sm" id="uAdd">${icon('plus')}<span>${t('cu.addAddress')}</span></button></div>
         <div id="uAddrs" class="addr-list"></div>
       </form>
@@ -1105,12 +1137,13 @@ PAGES.customers = view => {
       const name = $('#uName', dr).value.trim(), phone = toLatin($('#uPhone', dr).value.trim());
       let bad = false;
       if (!name) { err('#uName', t('required')); bad = true; }
-      if (!phone) { err('#uPhone', t('required')); bad = true; } else if (!cashierPhone(phone)) { err('#uPhone', t('cu.phoneBad')); bad = true; } else if (phoneTaken(phone, id)) { err('#uPhone', t('cu.phoneTaken')); bad = true; }
+      const full = gccCompose($('#uCc', dr).value, phone);
+      if (!phone) { err('#uPhone', t('required')); bad = true; } else if (!full) { err('#uPhone', t('cu.phoneBad')); bad = true; } else if (phoneTaken(full, id)) { err('#uPhone', t('cu.phoneTaken')); bad = true; }
       if (bad) return;
       const list = addrs.map(a => ({ area: a.area || '', details: String(a.details || '').trim() })).filter(a => a.area || a.details);
       const btn = $('#uSave', dr); saving = true; btn.classList.add('loading');
       try {
-        const ph = cashierPhone(phone), was = cashierPhone(c.phone);
+        const ph = full, was = cashierPhone(c.phone);
         const up = { [`customers/${id}/name`]: name, [`customers/${id}/nameAr`]: null, [`customers/${id}/nameEn`]: null, [`customers/${id}/phone`]: ph,
           [`customers/${id}/addresses`]: list.length ? list : null, [`customers/${id}/zoneId`]: null, [`customers/${id}/address`]: null, [`customers/${id}/updatedAt`]: LIVE.now(), [`customerPhoneIndex/${ph}`]: id };
         if (was && was !== ph) up[`customerPhoneIndex/${was}`] = null;
