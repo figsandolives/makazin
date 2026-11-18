@@ -1,12 +1,13 @@
 /* مبيعات الكاشير على المخزون — the cashier only saves the invoice; the stock it sold comes off here.
-   Every invoice the cashier marks salesStock (saved from meta/salesStockFrom on) takes its products from
+   Every invoice the cashier marks salesStock takes its products from
    its branch: what a branch holds = products/{id}/stockByBranch − its marked, non-cancelled sales.
    Nothing is written for a sale, so editing or cancelling an invoice changes the stock at once.
    LIVE serves those invoices as the 'salesSince' collection, loaded with every page that reads products.
    Invoices saved before the change (stockDeducted, or not marked) were already handled and are not read. */
 
 const isSalesStock = o => !!o && o.salesStock === true && !o.stockDeducted && !(o.status === 'cancelled' || o.isCancelled === true) && !!o.stockBranchId;
-const saleLines = o => items$(o.items).filter(it => it.productId && it.productId !== 'breakfast-trolley-deposit' && !it.depositForLineId);
+const saleLines = o => items$(o.items).filter(it => it?.productId && it.productId !== 'breakfast-trolley-deposit' && !it.depositForLineId);
+const saleLineQty = it => Number(it.quantity ?? it.qty) || 0;
 
 // {productId: {branchId: qty}} of the marked sales, rebuilt when the invoices change
 let soldIdx = { src: null, map: {} };
@@ -18,7 +19,7 @@ function soldMap() {
       if (!isSalesStock(o)) return;
       saleLines(o).forEach(it => {
         const by = (map[it.productId] ||= {});
-        by[o.stockBranchId] = (by[o.stockBranchId] || 0) + (Number(it.quantity ?? it.qty) || 0);
+        by[o.stockBranchId] = (by[o.stockBranchId] || 0) + saleLineQty(it);
       });
     });
     soldIdx = { src, map };

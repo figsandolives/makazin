@@ -6,8 +6,8 @@
    - lines of multi-product production vouchers (the old page only read the first product)
    - cashier transfer requests (sent from the warehouse / received by the branch) were missing,
      so the opening balance came out wrong
-   - sales are counted from what the invoice really took from stock (stockMovements); invoices
-     saved before stock tracking are listed but no longer move the balance
+   - sales use stored stock movements or the same marked sales as the live stock balance;
+     invoices without a deduction remain visible for reference
    - a stocktake counted per batch is one change per item, not one per line
    - the list follows live data, and a batch barcode scan finds its product */
 
@@ -28,6 +28,37 @@ const icTypeName = k => t(`ic.t.${k}`);
    started, so it is right even when the item's early history is incomplete. */
 // An invoice number as typed on an issue voucher or saved on the order ("0347" = "347")
 const icNo = v => { const s = toLatin(String(v ?? '')).trim(); return /^\d+$/.test(s) ? String(+s) : s; };
+const icProductId = l => String(l.productId || l.itemId || l.id || '');
+const icSaleTime = o => Number(o.timestamp || o.createdAt || 0);
+function icSaleBranch(o, pid) {
+  const br = (o.stockDeducted && o.stockMovements?.[pid]?.branchId) || o.stockBranchId || o.branchId;
+  if (br || !o.branch) return br;
+  return Object.entries(LIVE.cache.branches || {}).find(([id, b]) =>
+    [id, b.name, b.nameAr, b.nameEn].includes(o.branch))?.[0];
+}
+let icOrderIndex = {};
+function icOrders() {
+  const history = LIVE.cache[icOrdersPath], sales = LIVE.cache.salesSince;
+  if (icOrderIndex.history === history && icOrderIndex.sales === sales && icOrderIndex.byProduct) return icOrderIndex;
+  const byProduct = new Map(), byNumber = new Map();
+  Object.entries({ ...history, ...sales }).forEach(([id, order]) => {
+    if (!order || typeof order !== 'object') return;
+    const o = { ...order, id };
+    const products = new Set(items$(o.items).filter(Boolean).map(icProductId));
+    if (o.stockDeducted) Object.keys(o.stockMovements || {}).forEach(pid => products.add(pid));
+    products.delete('');
+    products.forEach(pid => {
+      if (!byProduct.has(pid)) byProduct.set(pid, []);
+      byProduct.get(pid).push(o);
+    });
+    new Set([o.invoiceNumber, o.orderNumber].map(icNo).filter(Boolean)).forEach(no => {
+      if (!byNumber.has(no)) byNumber.set(no, []);
+      byNumber.get(no).push(o);
+    });
+  });
+  icOrderIndex = { history, sales, byProduct, byNumber };
+  return icOrderIndex;
+}
 
 /* Every movement of one item at one branch, unsorted */
 function icRaw(entry, branchId) {
@@ -43,7 +74,6 @@ function icRaw(entry, branchId) {
     br: branchId, link: o.link || '', links: o.links || []
   });
   const each = (path, fn) => Object.entries(LIVE.cache[path] || {}).forEach(([rid, r]) => { if (r && typeof r === 'object') fn({ id: rid, ...r }); });
-  const orders = Object.entries(LIVE.cache[icOrdersPath] || {}).filter(([, o]) => o && !(o.status === 'cancelled' || o.isCancelled === true));
   const brName = b => branchLabel(b) || '-';
   const batchOf = it => (typeof batchNote === 'function' ? batchNote(it) : '');
 
@@ -53,7 +83,8 @@ function icRaw(entry, branchId) {
     items$(r.items).filter(same).forEach(it => {
       let price = null;
       if (r.issueType === 'order') {
-        const o = icPickSale(orders.filter(([, x]) => [x.invoiceNumber, x.orderNumber].map(icNo).includes(icNo(r.invoiceNumber))).map(([oid, x]) => ({ id: oid, ...x })), { pid: id, br: branchId, ts: Number(r.createdAt || 0) });
+        const candidates = icOrders().byNumber.get(icNo(r.invoiceNumber)) || [];
+        const o = icPickSale(candidates.filter(x => !oCancelled(x)), { pid: id, br: branchId, ts: Number(r.createdAt || 0) });
         const ol = o && items$(o.items).find(l => type === 'product' && String(l.productId || l.itemId || l.id) === String(id));
         price = ol ? Number(ol.price || 0) : null;
       }
@@ -61,18 +92,20 @@ function icRaw(entry, branchId) {
         { price, counts: issueDeducts(r.issueType), note: r.issueType === 'order' ? `${t('ic.forInvoice')} #${r.invoiceNumber || '-'} · ${t('ic.noStock')}` : '', batch: batchOf(it), link: r.issueType === 'order' ? icNo(r.invoiceNumber) : '' });
     });
   });
-  // فواتير البيع: every sale takes its quantity from the invoice's branch (the cashier's own record of
-  // what it took is used when the invoice has one)
-  if (type === 'product') orders.forEach(([oid, o]) => {
-    const lines = items$(o.items).filter(l => String(l.productId || l.itemId || l.id) === String(id));
-    if (!lines.length) return;
-    const mv = o.stockDeducted && o.stockMovements ? o.stockMovements[id] : null;
-    const price = Number(lines[0].price ?? lines[0].unitPrice ?? 0);
-    const rec = { id: oid, ...o }, num = o.invoiceNumber || o.orderNumber || oid;
-    const br = mv ? mv.branchId : o.stockBranchId || o.branchId;
+  // The original movement is authoritative even when the invoice's items were edited.
+  if (type === 'product') (icOrders().byProduct.get(String(id)) || []).forEach(o => {
+    if (oCancelled(o)) return;
+    const lines = items$(o.items).filter(l => l && icProductId(l) === String(id));
+    const mv = o.stockDeducted && o.stockMovements?.[id];
+    const price = lines.length ? Number(lines[0].price ?? lines[0].unitPrice ?? 0) : null;
+    const num = o.invoiceNumber || o.orderNumber || o.id;
+    const br = icSaleBranch(o, id);
     if (br !== branchId) return;
-    add(rec, 'order', -(mv ? Number(mv.quantity || 0) : lines.reduce((s, l) => s + lineQty(l), 0)), num, icTypeName('order'), o.createdAt || o.timestamp,
-      { price, links: [o.invoiceNumber, o.orderNumber].map(icNo).filter(Boolean) });
+    const calculated = isSalesStock((LIVE.cache.salesSince || {})[o.id]);
+    const deducted = mv ? Number(mv.quantity || 0) : calculated
+      ? saleLines(o).filter(l => String(l.productId) === String(id)).reduce((s, l) => s + saleLineQty(l), 0) : 0;
+    add(o, 'order', -(deducted || lines.reduce((s, l) => s + lineQty(l), 0)), num, icTypeName('order'), icSaleTime(o),
+      { price, counts: !!deducted, note: deducted ? '' : t('ic.notDeducted'), links: [o.invoiceNumber, o.orderNumber].map(icNo).filter(Boolean) });
   });
   each('transfers', r => {
     const into = r.toBranchId === branchId, outOf = r.fromBranchId === branchId; if (!into && !outOf) return;
@@ -151,10 +184,10 @@ function icRaw(entry, branchId) {
    loaded (made before the period's month) are looked up once on the server; the card then redraws. */
 const IC_SALES = new Map();
 let icSaleFound = null;
-const icHas = (o, pid) => items$(o.items).some(l => String(l.productId || l.itemId || l.id) === String(pid));
-const icSaleOf = (o, ctx) => (o.stockBranchId || o.branchId) === ctx.br && icHas(o, ctx.pid);
+const icHas = (o, pid) => !!(o.stockDeducted && o.stockMovements?.[pid]) || items$(o.items).some(l => l && icProductId(l) === String(pid));
+const icSaleOf = (o, ctx) => icSaleBranch(o, ctx.pid) === ctx.br && icHas(o, ctx.pid);
 function icSaleCands(no, ctx) {
-  const loaded = Object.entries(LIVE.cache[icOrdersPath] || {}).filter(([, o]) => o && typeof o === 'object' && [o.invoiceNumber, o.orderNumber].map(icNo).includes(no)).map(([id, o]) => ({ id, ...o }));
+  const loaded = icOrders().byNumber.get(no) || [];
   if (!loaded.some(o => icSaleOf(o, ctx)) && !IC_SALES.has(no)) {
     IC_SALES.set(no, null);
     const raw = /^\d+$/.test(no) ? [no, Number(no)] : [no];
@@ -166,7 +199,7 @@ function icSaleCands(no, ctx) {
   return [...loaded, ...extra];
 }
 function icPickSale(list, ctx) {
-  const rank = o => { const ts = Number(o.createdAt || o.timestamp || 0); return [(icSaleOf(o, ctx) ? 4 : 0) + (icHas(o, ctx.pid) ? 1 : 0) + (ts <= ctx.ts ? 1 : 0), -Math.abs(ctx.ts - ts)]; };
+  const rank = o => { const ts = icSaleTime(o); return [(icSaleOf(o, ctx) ? 4 : 0) + (icHas(o, ctx.pid) ? 1 : 0) + (ts <= ctx.ts ? 1 : 0), -Math.abs(ctx.ts - ts)]; };
   return list.map(o => [rank(o), o]).sort((a, b) => b[0][0] - a[0][0] || b[0][1] - a[0][1]).map(x => x[1])[0] || null;
 }
 
@@ -177,20 +210,22 @@ function icPickSale(list, ctx) {
 function icMoves(entry, branchId, from, to) {
   const item = itemData(entry.type, entry.id) || {}, name = nameOf(item) || '-', code = item.code || '-';
   const branches = branchId ? [branchId] : Object.keys(LIVE.cache.branches || {});
+  const start = from ? dayStart(from) : -Infinity, end = to ? dayEnd(to) + 999 : Infinity;
+  const inPeriod = ts => ts >= start && ts <= end;
   let out = branches.flatMap(b => icRaw(entry, b));
   if (!branchId) out.forEach(m => { m.note = [branchLabel(m.br), m.note].filter(Boolean).join(' · '); });
   out.sort((a, b) => a.ts - b.ts);
   // Each "order" issue goes under its own invoice. When that invoice isn't among these movements
   // (before the period — its stock is already in the opening balance — or in another branch, or
   // cancelled) it still shows above the issue, for reference only: it takes no stock in this card.
-  const saleRow = new Map(out.filter(m => m.doc === 'order').map(m => [m.rec.id, m]));
+  const saleRow = new Map(out.filter(m => m.doc === 'order' && inPeriod(m.ts)).map(m => [m.rec.id, m]));
   const parent = new Map(), refs = new Map();
-  if (entry.type === 'product') out.filter(m => m.doc === 'issue' && m.link).forEach(m => {
+  if (entry.type === 'product') out.filter(m => m.doc === 'issue' && m.link && inPeriod(m.ts)).forEach(m => {
     const o = icPickSale(icSaleCands(m.link, { pid: entry.id, br: m.br, ts: m.ts }), { pid: entry.id, br: m.br, ts: m.ts }); if (!o) return;
     if (saleRow.has(o.id)) { parent.set(m, saleRow.get(o.id)); return; }
     if (!refs.has(o.id)) {
-      const lines = items$(o.items).filter(l => String(l.productId || l.itemId || l.id) === String(entry.id));
-      const br = o.stockBranchId || o.branchId, ts = Number(o.createdAt || o.timestamp || 0);
+      const lines = items$(o.items).filter(l => l && icProductId(l) === String(entry.id));
+      const br = icSaleBranch(o, entry.id), ts = icSaleTime(o);
       const why = oCancelled(o) ? t('ic.saleCancelled') : br && br !== m.br ? `${branchLabel(br) || '-'} · ${t('ic.saleOther')}` : t('ic.saleEarlier');
       refs.set(o.id, { ...m, rec: o, doc: 'order', qty: -lines.reduce((s, l) => s + (Number(l.qty ?? l.quantity ?? l.count ?? 0) || 0), 0), num: o.invoiceNumber || o.orderNumber || o.id, label: icTypeName('order'),
         note: why, ts, counts: false, price: lines.length ? Number(lines[0].price ?? lines[0].unitPrice ?? 0) : null, invNo: '-', invValue: null, batch: '', link: '', links: [m.link], ref: true, at: m.ts });
@@ -207,11 +242,10 @@ function icMoves(entry, branchId, from, to) {
     return false;
   }).flatMap(m => { const kids = under.get(m) || []; if (kids.length) m.parent = true; kids.forEach((k, i) => { k.more = i < kids.length - 1; }); return [m, ...kids]; });
   const when = m => m.at ?? m.ts;
-  const start = from ? dayStart(from) : -Infinity, end = to ? dayEnd(to) : Infinity;
   const now = branches.reduce((s, b) => s + stockAt(item, b), 0);
   const opening = now - out.filter(m => when(m) >= start && m.counts).reduce((s, m) => s + m.qty, 0);
   let bal = opening;
-  const period = out.filter(m => when(m) >= start && when(m) <= end).map(m => { if (m.counts) bal += m.qty; return { ...m, balance: bal }; });
+  const period = out.filter(m => inPeriod(when(m))).map(m => { if (m.counts) bal += m.qty; return { ...m, balance: bal }; });
   return [{ opening: true, rec: null, doc: 'opening', qty: null, num: '-', label: t('ic.opening'), note: '', ts: Number.isFinite(start) ? start : (period[0] || {}).ts || 0, price: null, counts: false,
     unitId: item.unitId || null, invNo: '-', invValue: null, keeper: '-', staff: '-', batch: '', name, code, item: entry, balance: opening }, ...period];
 }

@@ -857,7 +857,7 @@ PAGES.stocktake = view => voucherPage(view, {
         up[stockKey(c.type, c.id, b)] = LIVE.increment(c.qty - prevOf.get(key)); up[locPath(c.type, c.id, L)] = c.qty;
         if (!locList()[(itemData(c.type, c.id) || {}).storageLocationId]) up[`${itemPath(c.type, c.id)}/storageLocationId`] = L; // first place of an unplaced item
       }
-      else up[stockKey(c.type, c.id, b)] = c.qty + (c.type === 'product' ? soldQty(c.id, b) : 0); // shown = stored − sales
+      else move(c.type, c.id, b, null, c.qty - prevOf.get(key));
     });
     if (cur) {
       const nextKeys = new Set([...countByItem(next).keys()]);

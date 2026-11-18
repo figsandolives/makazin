@@ -111,24 +111,14 @@ const LIVE = (() => {
     return { count: 0, ref, handler, stop: () => { recent.off('value', onRecent); ref.off('value', handler); partial.delete(path); } };
   }
 
-  /* 'salesSince' = the invoices the warehouse takes off stock (sales-stock.js): the orders from
-     meta/salesStockFrom on. Any page that reads products gets them too, so its stock is right. */
+  /* 'salesSince' = the invoices marked for calculated stock deductions (sales-stock.js).
+     Any page that reads products gets these invoices too. */
   const withSales = paths => (paths.includes('products') && !paths.includes('salesSince') ? [...paths, 'salesSince'] : paths);
   function watchSales() {
-    let from = null, query = null;
+    const query = db.ref('orders').orderByChild('salesStock').equalTo(true);
     const handler = snap => { cache.salesSince = snap.val() || {}; subs.forEach(fn => fn('salesSince')); };
-    const meta = snap => {
-      const next = Number(snap.val()) || 0;
-      if (next === from) return;
-      from = next;
-      if (query) query.off('value', handler);
-      query = null;
-      if (!from) { handler({ val: () => null }); return; }
-      query = db.ref('orders').orderByChild('timestamp').startAt(from);
-      query.on('value', handler, () => handler({ val: () => cache.salesSince || null }));
-    };
-    db.ref('meta/salesStockFrom').on('value', meta, () => meta({ val: () => 0 }));
-    return { count: 0, stop: () => { db.ref('meta/salesStockFrom').off('value', meta); if (query) query.off('value', handler); } };
+    query.on('value', handler);
+    return { count: 0, stop: () => query.off('value', handler) };
   }
 
   /* Keep `cache[path]` in sync; calls onChange(path) on every update.
