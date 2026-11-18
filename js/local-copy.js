@@ -57,6 +57,25 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
   }
 
+  /* A copy too far behind is fetched again (figs-rtdb reloads it), but what a page worked out from the
+     old copy in the meantime stayed old: the marked sales (salesSince) kept the invoices of the day the
+     copy was saved, so every later sale took no stock until the next change to orders. Once a copied
+     collection is fresh, every query or child read from it is worked out again. */
+  function refreshDerived() {
+    const c = client();
+    if (c.raseedDerived) return;
+    c.raseedDerived = true;
+    const reload = c.reload.bind(c);
+    c.reload = async entry => {
+      await reload(entry);
+      if (!entry.pinned) return;
+      const base = entry.parts;
+      await Promise.all([...c.entries.values()]
+        .filter(e => e !== entry && !e.pinned && e.ready && e.parts.length >= base.length && base.every((p, i) => e.parts[i] === p))
+        .map(e => reload(e)));
+    };
+  }
+
   LIVE.copySupported = supported;
   LIVE.copyReady = () => supported && client().pinned().length > 0;
 
@@ -68,6 +87,7 @@
     if (!info || !Array.isArray(info.paths) || !info.seq) return false;
     const values = {};
     await Promise.all(info.paths.map(async p => { values[p] = (await get(tx.objectStore('paths'), p)) ?? null; }));
+    refreshDerived();
     client().pin(values, info.seq);
     keepSaving();
     return true;
@@ -85,6 +105,7 @@
     let last = null;
     const { values, seq } = await client().download(PATHS, p => { last = p; onProgress(p); }, { ...SIZES, ...sizes });
     try { localStorage.setItem(SIZE_KEY, JSON.stringify(last.sizes)); } catch (e) {}
+    refreshDerived();
     client().pin(values, seq);
     keepSaving();
     try {

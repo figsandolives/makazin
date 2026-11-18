@@ -167,7 +167,12 @@ function voucherPage(view, cfg) {
     const locMode = () => (cfg.locMode && mainBranch() ? cfg.locMode(d) : null);
     // A count of one location of the main branch compares with what that location holds
     const countLoc = () => (cfg.locCount ? cfg.locCount(d) : null);
-    const nowQty = (type, id) => (countLoc() ? locView(type, id, before()).locs[countLoc()] || 0 : available(type, id));
+    // A count of a place the item is kept only in (or nowhere yet) replaces its whole balance, as the save does
+    const nowQty = (type, id) => {
+      const L = countLoc(); if (!L) return available(type, id);
+      const v = locView(type, id, before());
+      return Object.entries(v.locs).some(([loc, q]) => loc !== L && q > 1e-9) ? v.locs[L] || 0 : available(type, id);
+    };
     const locHere = (it, loc) => (locView(it.itemType, it.itemId, before()).locs[loc] || 0);
     const locDraft = (it, loc) => d.items.filter(x => x.itemType === it.itemType && String(x.itemId) === String(it.itemId) && x.locId === loc).reduce((s, x) => s + Number(x.qty || 0), 0);
     const overLoc = it => locMode() === 'out' && blocks() && it.locId && locDraft(it, it.locId) > locHere(it, it.locId) + 1e-9;
@@ -826,7 +831,15 @@ PAGES.stocktake = view => voucherPage(view, {
     const old = cur ? countByItem(cur) : new Map();
     const same = cur && (cur.branchId || b) === b && oldL === L;
     // A location of the main branch: the count is that location's quantity; the branch total moves by the change
-    const nowStock = (type, id) => (L ? locView(type, id).locs[L] || 0 : stockAt(itemData(type, id), b));
+    /* When no other place holds the item, the counted place is all of it: the count replaces the whole
+       main balance (stock with no place, or below zero, included). Counting only the place's own quantity
+       added the count on top of the stock that had no place (count 7 of a balance of 76 gave 83). */
+    const nowStock = (type, id) => {
+      const item = itemData(type, id);
+      if (!L) return stockAt(item, b);
+      const v = locView(type, id);
+      return Object.entries(v.locs).some(([loc, q]) => loc !== L && q > 1e-9) ? v.locs[L] || 0 : stockAt(item, b);
+    };
     const move = (type, id, branch, loc, q) => {
       up[stockKey(type, id, branch)] = LIVE.increment(q);
       if (loc) up[locPath(type, id, loc)] = LIVE.increment(q);

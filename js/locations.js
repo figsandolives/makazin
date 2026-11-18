@@ -60,9 +60,11 @@ function withLocations(up) {
     const view = locView(type, id), next = { ...view.locs }, gone = new Set();
     let none = view.none, change = 0;
     if (stock) {
-      const v = up[stock], i = inc(v);
+      const v = up[stock], i = inc(v), before = stockAt(item, main);
       // An absolute balance (a branch count) is stored with the sales still to come off it
-      change = i != null ? i : typeof v === 'number' ? v - (type === 'product' ? soldQty(id, main) : 0) - stockAt(item, main) : 0;
+      const after = i != null ? before + i : typeof v === 'number' ? v - (type === 'product' ? soldQty(id, main) : 0) : before;
+      // Places hold what is above zero: a balance coming back from below zero fills them only past zero
+      change = Math.max(0, after) - Math.max(0, before);
     }
     named.forEach(([loc, path]) => {
       const v = up[path], i = inc(v);
