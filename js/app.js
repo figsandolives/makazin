@@ -1032,7 +1032,7 @@ function startApp() {
 }
 
 /* Boot */
-delete NAV_BADGE['pending-movements'];
+delete NAV_BADGE['pending-movements']; delete NAV_BADGE['online-orders']; // placeholder numbers from the design, not real counts
 LIVE.restore().then(user => (user ? enterApp() : showLogin()));
 requestAnimationFrame(() => html.classList.add('ready'));
 
