@@ -652,7 +652,7 @@ async function refreshOnline() {
     const rows = await LIVE.platform('/accounting/online-orders');
     OO.rows = Object.fromEntries((Array.isArray(rows) ? rows : []).map(r => r && r.rawOrder).filter(o => o && o.orderId).map(o => [String(o.orderId), o]));
     OO.error = null;
-  } catch (e) { OO.error = e.status === 401 || e.status === 403 ? 'denied' : 'network'; }
+  } catch (e) { OO.error = e.status === 403 ? 'role' : e.status === 401 ? 'denied' : 'network'; OO.detail = e.detail || ''; }
   OO.loaded = true; OO.busy = false;
   OO.subs.forEach(fn => fn());
 }
@@ -697,7 +697,7 @@ PAGES['online-orders'] = view => {
   function draw() {
     const body = $('#ooBody', view); if (!body) return;
     if (!OO.loaded || !LIVE.loaded(OO_PATHS)) { setHtml(body, skeletonRows(6, 14)); $('#ooK', view).innerHTML = skeletonKpis(); return; }
-    setHtml($('#ooErr', view), OO.error ? `<p class="note-box warn-box">${icon('alert')}<span>${t(OO.error === 'denied' ? 'oo.denied' : 'oo.offline')}</span></p>` : '');
+    setHtml($('#ooErr', view), OO.error ? `<p class="note-box warn-box">${icon('alert')}<span>${t(OO.error === 'role' ? 'oo.roleDenied' : OO.error === 'denied' ? 'oo.denied' : 'oo.offline')}</span></p>` : '');
     const rows = all();
     [...st.sel].forEach(id => { if (!OO.rows[id]) st.sel.delete(id); });
     const list = rows.filter(x => matches(x.o)), live = list.filter(x => !oCancelled(x.o));

@@ -223,13 +223,23 @@ const LIVE = (() => {
     presence = setInterval(() => dev.update({ lastSeen: live.now(), page }).catch(() => {}), 60000);
   };
   /* Platform API (online orders) with the same employee session */
+  /* A saved session the server no longer accepts (401) asks for the code again — the same
+     screen the data uses — then retries once. 403 = signed in, but this role is refused. */
   live.platform = async path => {
     if (MOCK) return MOCK.platform(path);
-    const token = FigsRTDB.client().token();
-    const res = await fetch(`${apiBase}${path}`, { headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, cache: 'no-store' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw Object.assign(new Error(data.error || 'platform'), { status: res.status });
-    return data;
+    const client = (connect(), FigsRTDB.client());
+    for (let attempt = 0; ; attempt++) {
+      const token = client.token();
+      const res = await fetch(`${apiBase}${path}`, { headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) return data;
+      if (res.status === 401 && attempt === 0) {
+        if (token) { client.refused.add(token); client.setToken(''); }
+        await client.login();
+        continue;
+      }
+      throw Object.assign(new Error(data.error || 'platform'), { status: res.status, detail: data.error || '' });
+    }
   };
 
   return live;
