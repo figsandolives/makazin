@@ -1434,12 +1434,12 @@ small.by { display: block; margin-top: 4px; font-size: .72rem; color: var(--text
 tr.is-cancelled td { color: var(--text-3); }
 tr.is-cancelled .num, tr.is-cancelled b.num { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 60%, transparent); }
 .cancel-note { color: var(--danger); font-size: .74rem; font-weight: 600; white-space: normal; max-width: 260px; }
-.defer-note { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); font-size: .74rem; font-weight: 600; }
+.defer-note { display: inline-flex; align-items: center; gap: 4px; color: var(--danger); font-size: .74rem; font-weight: 600; }
 .defer-note .ic { width: 12px; height: 12px; }
-.defer-card { padding: 14px 16px; margin-bottom: 16px; border-inline-start: 4px solid var(--warning); }
+.defer-card { padding: 14px 16px; margin-bottom: 16px; border-inline-start: 4px solid var(--danger); }
 .defer-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.defer-head .ic { color: var(--warning); width: 18px; height: 18px; }
-.defer-head em { font-style: normal; font-size: .76rem; font-weight: 700; padding: 1px 8px; border-radius: 99px; color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+.defer-head .ic { color: var(--danger); width: 18px; height: 18px; }
+.defer-head em { font-style: normal; font-size: .76rem; font-weight: 700; padding: 1px 8px; border-radius: 99px; color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
 .defer-head small { color: var(--text-3); font-size: .8rem; flex-basis: 100%; }
 .defer-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .defer-list .item-chip { padding-inline: 12px; }
@@ -1898,13 +1898,14 @@ tr.pt-empty td { color: var(--text-3); }
 .us-role-f { flex: 0 1 190px; }
 .us-name { display: inline-flex; align-items: center; gap: 10px; }
 .us-name .av { width: 32px; height: 32px; font-size: .85rem; flex: none; }
-.us-roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.us-roles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .us-roles button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text-2); font: inherit; font-weight: 600; cursor: pointer; transition: border-color var(--fast), background var(--fast), color var(--fast); }
 .us-roles button .ic { width: 20px; height: 20px; }
 .us-roles button:hover:not(:disabled) { border-color: var(--primary); }
 .us-roles button.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary); }
 .us-roles button:disabled { opacity: .45; cursor: not-allowed; }
 .us-roles button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 480px) { .us-roles { grid-template-columns: repeat(2, 1fr); } }
 .inv-totals { display: grid; gap: 0; margin-top: 14px; margin-inline-start: auto; width: min(320px, 100%); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .inv-totals div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--border); }
 .inv-totals div:last-child { border-bottom: 0; }

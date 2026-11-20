@@ -18,6 +18,11 @@ function oTime(o) {
   const time = typeof v === 'number' ? v : new Date(v || 0).getTime();
   return Number.isFinite(time) ? time : 0;
 }
+/* Really deferred = its accounting day differs from the day it was created (a "deferral" to the same day is not one) */
+const ymdLocal = ts => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const oDeferred = (id, o) => !!(o && o.isInvoiceDeferred && /^\d{4}-\d{2}-\d{2}$/.test(o.accountingDate || '') && createdSort(id, o) && o.accountingDate !== ymdLocal(createdSort(id, o)));
+/* Only the manager and the treasurer may defer an invoice to a day that has passed */
+const canDeferPast = () => ['manager', 'treasurer'].includes(me().role);
 const oNum = o => (o && (o.orderNumber || o.invoiceNumber || o.invoiceNo || o.orderId || o.number)) || '-';
 /* Orders are tied to customers by phone number (the cashier saves the customer's name and phone
    on the order, not its id) — customerId is used only when an order carries a valid one. */
@@ -321,7 +326,7 @@ PAGES.orders = view => {
     const o = x.o, c = oCancelled(o);
     return `<tr data-id="${esc(x.id)}" class="${first ? 'row-in' : ''}${c ? ' is-cancelled' : ''}" style="--r:${i}">
       <td class="sel-col"><input type="checkbox" data-sel ${st.sel.has(x.id) ? 'checked' : ''} aria-label="${esc(oNum(o))}"></td>
-      <td data-label="${t('o.number')}"><span class="cell-2"><b class="mono">#${esc(oNum(o))}</b>${c ? `<small class="cancel-note">${esc(oCancelText(o))}</small>` : ''}${o.isInvoiceDeferred && o.accountingDate ? `<small class="defer-note">${icon('clock')}${t('o.deferredTo')} ${esc(o.accountingDate)}</small>` : ''}</span></td>
+      <td data-label="${t('o.number')}"><span class="cell-2"><b class="mono">#${esc(oNum(o))}</b>${c ? `<small class="cancel-note">${esc(oCancelText(o))}</small>` : ''}${oDeferred(x.id, o) ? `<small class="defer-note">${icon('clock')}${t('o.deferredTo')} ${esc(o.accountingDate)}</small>` : ''}</span></td>
       <td data-label="${t('o.customer')}">${oCustId(o) ? `<button type="button" class="link" data-o="customer">${esc(oCustName(o))}</button>` : esc(oCustName(o))}</td>
       <td data-label="${t('o.zone')}">${esc(oZone(o))}</td>
       <td data-label="${t('c.phone')}"><span class="mono">${esc(oPhone(o))}</span></td>
@@ -361,7 +366,7 @@ PAGES.orders = view => {
     zones.paint();
     // One day selected: show invoices created that day but moved to a later accounting day
     const day = st.from && st.from === st.to ? st.from : '';
-    const deferred = day ? all.filter(x => x.o.isInvoiceDeferred && inRange(createdSort(x.id, x.o), day, day)) : [];
+    const deferred = day ? all.filter(x => oDeferred(x.id, x.o) && inRange(createdSort(x.id, x.o), day, day)) : [];
     setHtml($('#oDeferred', view), deferred.length ? `<section class="card defer-card"><div class="defer-head">${icon('clock')}<b>${t('o.deferred')}</b><em>${deferred.length}</em><small>${t('o.deferredSub')}</small></div>
       <div class="defer-list">${deferred.map(x => `<span class="item-chip"><b class="mono">#${esc(oNum(x.o))}</b><small>${esc(x.o.accountingDate || '')}</small></span>`).join('')}</div></section>` : '');
     setHtml($('#oPager', view), pagerHtml(st, list.length));
@@ -410,6 +415,10 @@ PAGES.orders = view => {
      discount and the items; saved through a transaction that refuses a cancelled invoice. */
   function openEdit(id) {
     if (!afterCatalog(['products'], () => openEdit(id))) return;
+    const _o = (LIVE.cache.orders || {})[id] || {};
+    // Deferral: never pre-fill the invoice's own day (saving it would defer to the same day)
+    const createdYmd = ymdLocal(createdSort(id, _o)), todayYmd = ymdLocal(Date.now());
+    const deferInit = [_o.accountingDate, _o.deliveryDate].find(d => d && d !== createdYmd) || '';
     const orig = (LIVE.cache.orders || {})[id];
     if (!orig) return;
     if (oCancelled(orig)) { toast(oCancelText(orig), { tone: 'danger', ic: 'alert' }); return; }
@@ -428,7 +437,7 @@ PAGES.orders = view => {
             <div class="field"><label for="eFee">${t('o.fee')}</label><input id="eFee" type="number" step="0.001" min="0" dir="ltr" value="${oFee(orig).toFixed(3)}"></div>
           </div>
           <div class="def-wrap"><label class="check-line"><input type="checkbox" id="eDefer" ${orig.isInvoiceDeferred && orig.accountingDate ? 'checked' : ''}> ${t('o.defer')}</label>
-            <div class="field${orig.isInvoiceDeferred && orig.accountingDate ? '' : ' hidden'}" id="eDeferWrap"><label for="eDeferDate">${t('o.deferDate')}</label><input type="date" id="eDeferDate" value="${esc(orig.accountingDate || orig.deliveryDate || '')}"><small class="err"></small></div></div>
+            <div class="field${orig.isInvoiceDeferred && orig.accountingDate ? '' : ' hidden'}" id="eDeferWrap"><label for="eDeferDate">${t('o.deferDate')}</label><input type="date" id="eDeferDate" dir="ltr" value="${esc(deferInit)}" ${canDeferPast() ? '' : `min="${todayYmd}"`}><small class="err"></small></div></div>
         </section>
         <section class="ed-sec"><h3>${t('o.discount')}</h3>
           <div class="form-grid">
@@ -537,7 +546,9 @@ PAGES.orders = view => {
       });
       if (!items.length) { $('#eErr', dr).textContent = t('o.emptyCart'); return; }
       const deferOn = $('#eDefer', dr).checked, deferDate = $('#eDeferDate', dr).value;
-      if (deferOn && !deferDate) { const f = $('#eDeferWrap', dr); f.classList.add('invalid'); $('.err', f).textContent = t('o.pickDeferDate'); return; }
+      const deferErr = !deferOn ? '' : !deferDate ? t('o.pickDeferDate') : deferDate === createdYmd ? t('o.deferSameDay')
+        : !canDeferPast() && deferDate < todayYmd && deferDate !== orig.accountingDate ? t('o.deferNoPast') : '';
+      if (deferErr) { const f = $('#eDeferWrap', dr); f.classList.add('invalid'); $('.err', f).textContent = deferErr; $('#eDeferDate', dr).focus(); return; }
       const c = calc();
       const nameIn = $('#eName', dr).value.trim(), phone = toLatin($('#ePhone', dr).value.trim());
       const customerName = nameIn || orig.customerName || orig.name || null;

@@ -148,7 +148,7 @@ Object.assign(I18N.ar, {
   loginTitle: 'تسجيل الدخول', loginSub: 'أدخل رمز الموظف للدخول إلى النظام', loginCode: 'رمز الموظف', loginBtn: 'دخول',
   loginInvalid: 'الرمز غير صحيح', loginNoUser: 'الرمز صحيح لكنه غير مرتبط بمستخدم في النظام', loginNetwork: 'تعذر الاتصال بالسيرفر، حاول مرة أخرى',
   sessionExpired: 'انتهت الجلسة، أدخل الرمز مرة أخرى', logoutQ: 'تسجيل الخروج؟', logoutSub: 'ستحتاج إلى رمز الموظف للدخول مرة أخرى.',
-  role_manager: 'مدير', role_cashier: 'كاشير', role_storekeeper: 'أمين مخزن', noAccess: 'ليس لديك صلاحية لهذه الصفحة',
+  role_manager: 'مدير', role_cashier: 'كاشير', role_treasurer: 'أمين صندوق', role_storekeeper: 'أمين مخزن', noAccess: 'ليس لديك صلاحية لهذه الصفحة',
   'st.received': 'مستلم', 'st.partial': 'مستلم جزئياً',
   'pm.sub': 'طلبات الشراء بانتظار اعتماد المدير قبل الاستلام', 'pm.searchPh': 'ابحث برقم الطلب، المورد، الصنف…',
   'pm.request': 'الطلب', 'pm.purchaseReq': 'طلب شراء', 'pm.storekeeper': 'أمين المخزن', 'pm.latestCost': 'آخر تكلفة', 'pm.value': 'قيمة الفاتورة',
@@ -166,7 +166,7 @@ Object.assign(I18N.en, {
   loginTitle: 'Sign in', loginSub: 'Enter your employee code to continue', loginCode: 'Employee code', loginBtn: 'Sign in',
   loginInvalid: 'Invalid code', loginNoUser: 'The code is valid but not linked to a user', loginNetwork: 'Could not reach the server, try again',
   sessionExpired: 'Session expired — enter your code again', logoutQ: 'Sign out?', logoutSub: 'You will need your employee code to sign in again.',
-  role_manager: 'Manager', role_cashier: 'Cashier', role_storekeeper: 'Storekeeper', noAccess: 'You do not have access to this page',
+  role_manager: 'Manager', role_cashier: 'Cashier', role_treasurer: 'Treasurer', role_storekeeper: 'Storekeeper', noAccess: 'You do not have access to this page',
   'st.received': 'Received', 'st.partial': 'Partially received',
   'pm.sub': 'Purchase requests waiting for manager approval before receiving', 'pm.searchPh': 'Search by request no., supplier, item…',
   'pm.request': 'Request', 'pm.purchaseReq': 'Purchase request', 'pm.storekeeper': 'Storekeeper', 'pm.latestCost': 'Latest cost', 'pm.value': 'Invoice value',
@@ -356,7 +356,7 @@ Object.assign(I18N.ar, {
   'o.selectAll': 'تحديد الكل', 'o.clearAll': 'إلغاء التحديد', 'o.printReport': 'طباعة التقرير', 'o.download': 'تحميل إكسل', 'o.nothingToExport': 'لا توجد طلبات للتصدير',
   'o.kCount': 'عدد الطلبات', 'o.none': 'لا توجد طلبات', 'o.noneSub': 'تظهر هنا فواتير الكاشير', 'o.ordersWord': 'طلب',
   'o.deferred': 'فواتير مؤجلة من هذا اليوم', 'o.deferredSub': 'أُنشئت في هذا اليوم وتُحتسب في تاريخ التأجيل', 'o.deferredTo': 'مؤجلة إلى',
-  'o.editTitle': 'تعديل الفاتورة', 'o.custInfo': 'بيانات العميل والتوصيل', 'o.defer': 'تأجيل الفاتورة', 'o.deferDate': 'تاريخ التأجيل', 'o.pickDeferDate': 'اختر تاريخ التأجيل',
+  'o.editTitle': 'تعديل الفاتورة', 'o.custInfo': 'بيانات العميل والتوصيل', 'o.defer': 'تأجيل الفاتورة', 'o.deferDate': 'تاريخ التأجيل', 'o.pickDeferDate': 'اختر تاريخ التأجيل', 'o.deferSameDay': 'هذا نفس يوم الفاتورة — اختر يوماً آخر', 'o.deferNoPast': 'لا يمكن التأجيل إلى يوم سابق — هذا لأمين الصندوق أو المدير فقط',
   'o.discount': 'الخصم', 'o.discType': 'نوع الخصم', 'o.discValue': 'قيمة الخصم', 'o.disc.none': 'بدون خصم', 'o.disc.percent': 'نسبة %', 'o.disc.fixed': 'مبلغ ثابت',
   'o.findProduct': 'ابحث عن منتج بالاسم أو الرمز أو الباركود…', 'o.pickFirst': 'اختر منتجاً من نتائج البحث', 'o.picked': 'المنتج المختار:', 'o.addItem': 'إضافة',
   'o.itemNote': 'ملاحظة على المنتج', 'o.noItems': 'لا توجد منتجات في الفاتورة', 'o.beforeDisc': 'المجموع قبل الخصم', 'o.emptyCart': 'الفاتورة يجب أن تحتوي على منتج واحد على الأقل',
@@ -401,7 +401,7 @@ Object.assign(I18N.en, {
   'o.selectAll': 'Select all', 'o.clearAll': 'Clear', 'o.printReport': 'Print report', 'o.download': 'Download Excel', 'o.nothingToExport': 'No orders to export',
   'o.kCount': 'Orders', 'o.none': 'No orders', 'o.noneSub': 'Cashier invoices show here', 'o.ordersWord': 'orders',
   'o.deferred': 'Invoices deferred from this day', 'o.deferredSub': 'Created this day, counted on their deferral date', 'o.deferredTo': 'Deferred to',
-  'o.editTitle': 'Edit invoice', 'o.custInfo': 'Customer & delivery', 'o.defer': 'Defer invoice', 'o.deferDate': 'Deferral date', 'o.pickDeferDate': 'Choose the deferral date',
+  'o.editTitle': 'Edit invoice', 'o.custInfo': 'Customer & delivery', 'o.defer': 'Defer invoice', 'o.deferDate': 'Deferral date', 'o.pickDeferDate': 'Choose the deferral date', 'o.deferSameDay': 'That is the invoice’s own day — pick another day', 'o.deferNoPast': 'You can’t defer to a past day — only the treasurer or a manager can',
   'o.discount': 'Discount', 'o.discType': 'Discount type', 'o.discValue': 'Discount value', 'o.disc.none': 'No discount', 'o.disc.percent': 'Percent %', 'o.disc.fixed': 'Fixed amount',
   'o.findProduct': 'Search a product by name, code or barcode…', 'o.pickFirst': 'Pick a product from the results', 'o.picked': 'Selected:', 'o.addItem': 'Add',
   'o.itemNote': 'Item note', 'o.noItems': 'The invoice has no products', 'o.beforeDisc': 'Subtotal before discount', 'o.emptyCart': 'The invoice needs at least one product',
@@ -745,7 +745,7 @@ Object.assign(I18N.ar, {
   'us.searchPh': 'ابحث بالاسم أو الكود', 'us.allRoles': 'كل الوظائف', 'us.none': 'لا يوجد مستخدمون', 'us.noneSub': 'أضف أول مستخدم',
   'us.formSub': 'الاسم وكود الدخول والوظيفة', 'us.codeTaken': 'هذا الكود مستخدم لمستخدم آخر', 'us.builtin': 'مدير النظام الأساسي', 'us.you': 'أنت',
   'us.builtinNote': 'مدير النظام الأساسي لا يُحذف ويبقى مديراً', 'us.selfNote': 'لا يمكنك حذف حسابك أو إزالة صلاحية المدير عنه', 'us.lastManager': 'هذا آخر مدير — أضف مديراً آخر أولاً',
-  'us.roleNote_manager': 'يرى كل الصفحات بما فيها الإدارة', 'us.roleNote_cashier': 'لا يرى المخازن والموردين', 'us.roleNote_storekeeper': 'لا يرى صفحات الإدارة',
+  'us.roleNote_manager': 'يرى كل الصفحات بما فيها الإدارة', 'us.roleNote_cashier': 'لا يرى المخازن والموردين', 'us.roleNote_storekeeper': 'لا يرى صفحات الإدارة', 'us.roleNote_treasurer': 'لا يرى المخازن والموردين والإدارة',
   'us.deleteQ': 'حذف المستخدم؟', 'us.deleteNote': 'لن يستطيع الدخول بكوده بعد الحذف'
 });
 Object.assign(I18N.en, {
@@ -753,7 +753,7 @@ Object.assign(I18N.en, {
   'us.searchPh': 'Search by name or code', 'us.allRoles': 'All roles', 'us.none': 'No users', 'us.noneSub': 'Add the first user',
   'us.formSub': 'Name, sign-in code and role', 'us.codeTaken': 'Another user already uses this code', 'us.builtin': 'Built-in system manager', 'us.you': 'You',
   'us.builtinNote': 'The built-in manager can’t be deleted and stays a manager', 'us.selfNote': 'You can’t delete your own account or remove its manager role', 'us.lastManager': 'This is the last manager — add another manager first',
-  'us.roleNote_manager': 'Sees every page, administration included', 'us.roleNote_cashier': 'Doesn’t see inventory or suppliers', 'us.roleNote_storekeeper': 'Doesn’t see administration',
+  'us.roleNote_manager': 'Sees every page, administration included', 'us.roleNote_cashier': 'Doesn’t see inventory or suppliers', 'us.roleNote_storekeeper': 'Doesn’t see administration', 'us.roleNote_treasurer': 'Doesn’t see inventory, suppliers or administration',
   'us.deleteQ': 'Delete user?', 'us.deleteNote': 'They won’t be able to sign in with their code after deletion'
 });
 Object.assign(I18N.ar, { 'ic.saleOther': 'خُصمت من مخزون ذلك الفرع — للاطلاع', 'ic.saleEarlier': 'فاتورة قبل بداية الفترة — خصمها داخل في الرصيد الافتتاحي' });

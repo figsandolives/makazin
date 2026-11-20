@@ -11,8 +11,8 @@ PAGES.users = view => {
   const st = (S.us ||= { per: 10, page: 1, q: '', role: 'all' });
   const PATHS = ['users'];
   const BUILTIN = 'manager';
-  const ROLES = ['manager', 'cashier', 'storekeeper'];
-  const ROLE_TONE = { manager: 'info', cashier: 'success', storekeeper: 'warning' };
+  const ROLES = ['manager', 'cashier', 'treasurer', 'storekeeper'];
+  const ROLE_TONE = { manager: 'info', cashier: 'success', treasurer: 'accent', storekeeper: 'warning' };
   let first = true, saving = false;
   view.innerHTML = `
     ${pageHeader('users', `<button class="btn btn-primary" data-us="new">${icon('plus')}<span>${t('us.add')}</span></button>`, t('us.sub'))}
@@ -74,7 +74,7 @@ PAGES.users = view => {
         <div class="field"><label for="usName">${t('us.name')} *</label><input id="usName" value="${esc(u ? u.name || '' : '')}" autocomplete="off"><small class="err" id="usNameErr"></small></div>
         <div class="field"><label for="usCode">${t('us.code')} *</label><input id="usCode" class="mono" dir="ltr" inputmode="numeric" value="${esc(u ? u.code || '' : '')}" autocomplete="off"><small class="err" id="usCodeErr"></small></div>
         <div class="field"><label>${t('c.role')}</label>
-          <div class="us-roles" role="radiogroup" aria-label="${t('c.role')}">${ROLES.map(r => `<button type="button" role="radio" class="${r === role ? 'on' : ''}" data-role="${r}" aria-checked="${r === role}" ${roleLock && r !== 'manager' ? 'disabled' : ''}>${icon({ manager: 'shield', cashier: 'receipt', storekeeper: 'warehouse' }[r])}<span>${t('role_' + r)}</span></button>`).join('')}</div>
+          <div class="us-roles" role="radiogroup" aria-label="${t('c.role')}">${ROLES.map(r => `<button type="button" role="radio" class="${r === role ? 'on' : ''}" data-role="${r}" aria-checked="${r === role}" ${roleLock && r !== 'manager' ? 'disabled' : ''}>${icon({ manager: 'shield', cashier: 'receipt', treasurer: 'wallet', storekeeper: 'warehouse' }[r])}<span>${t('role_' + r)}</span></button>`).join('')}</div>
           <small class="muted" id="usRoleNote">${roleLock ? esc(roleLock) : t('us.roleNote_' + role)}</small></div>
       </form>
       <footer class="dr-foot"><button class="btn btn-ghost" data-close>${t('cancel')}</button><button class="btn btn-primary" id="usSave">${icon('check')}<span>${t(u ? 'save' : 'add')}</span></button></footer>`;

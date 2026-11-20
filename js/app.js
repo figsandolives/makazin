@@ -38,10 +38,18 @@ const groupOf = route => NAV.find(g => g.items.includes(route));
 const me = () => LIVE.user || { name: '-', role: '' };
 const meInitial = () => { const n = (me().name || '-').trim(); return S.lang === 'ar' || /[\u0600-\u06FF]/.test(n) ? n[0] : n.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(); };
 const roleLabel = () => (me().role ? t('role_' + me().role) : '');
-/* Same rules as the old page: cashiers don't see inventory/suppliers, storekeepers don't see administration */
-const HIDDEN_BY_ROLE = { cashier: ['grp.inventory', 'grp.suppliers'], storekeeper: ['grp.admin'] };
-const visibleNav = () => NAV.filter(g => !(g.group && (HIDDEN_BY_ROLE[me().role] || []).includes(g.group)));
+/* Cashiers don't see inventory/suppliers; the treasurer doesn't see inventory/suppliers/administration;
+   the storekeeper doesn't see administration nor the treasurer's money pages (reports, invoices, journal, customers) */
+const HIDDEN_BY_ROLE = { cashier: ['grp.inventory', 'grp.suppliers'], treasurer: ['grp.inventory', 'grp.suppliers', 'grp.admin'], storekeeper: ['grp.admin'] };
+const TREASURER_ROUTES = ['reports', 'orders', 'online-orders', 'employee-journal', 'customers'];
+const HIDDEN_ROUTES_BY_ROLE = { storekeeper: TREASURER_ROUTES };
+const visibleNav = () => {
+  const hideG = HIDDEN_BY_ROLE[me().role] || [], hideR = HIDDEN_ROUTES_BY_ROLE[me().role] || [];
+  return NAV.filter(g => !(g.group && hideG.includes(g.group))).map(g => (hideR.length ? { ...g, items: g.items.filter(r => !hideR.includes(r)) } : g)).filter(g => g.items.length);
+};
 const canSee = route => visibleNav().some(g => g.items.includes(route));
+/* First page the user may open (reports, or the first visible page when reports is hidden) */
+const homeRoute = () => (canSee('reports') ? 'reports' : ((visibleNav()[0] || {}).items || ['reports'])[0]);
 
 function savePrefs() {
   try { localStorage.setItem('raseed.prefs.v2', JSON.stringify({ lang: S.lang, theme: S.theme, collapsed: S.collapsed })); } catch (e) {}
@@ -645,7 +653,7 @@ function openCmdk() {
 }
 function drawCmd(q) {
   q = q.trim().toLowerCase();
-  const routes = NAV.flatMap(g => g.items.map(r => ({ type: 'route', id: r, label: t(r), alt: I18N[S.lang === 'ar' ? 'en' : 'ar'][r], sub: t(g.group || g.section), ic: ROUTE_ICON[r] })));
+  const routes = visibleNav().flatMap(g => g.items.map(r => ({ type: 'route', id: r, label: t(r), alt: I18N[S.lang === 'ar' ? 'en' : 'ar'][r], sub: t(g.group || g.section), ic: ROUTE_ICON[r] })));
   const acts = [
     { type: 'act', id: 'lang', label: t('toggleLang'), ic: 'languages' },
     { type: 'act', id: 'theme', label: t('toggleTheme'), ic: S.theme === 'dark' ? 'sun' : 'moon' },
@@ -736,8 +744,8 @@ function renderPage() {
 }
 
 function go() {
-  const r = location.hash.replace(/^#\/?/, '') || 'reports';
-  const next = ROUTE_ICON[r] && canSee(r) ? r : 'reports';
+  const r = location.hash.replace(/^#\/?/, '') || homeRoute();
+  const next = ROUTE_ICON[r] && canSee(r) ? r : homeRoute();
   const changed = next !== S.route;
   S.route = next;
   html.classList.remove('sb-open');
