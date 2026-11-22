@@ -126,6 +126,8 @@ function createdSort(id, it = {}) {
   if (key.length >= 8) { const p = parseInt(key.slice(0, 8), 36); if (Number.isFinite(p) && p > 0) return p; }
   return 0;
 }
+/* List order: newest first; a duplicate carries listAt (just after its original) so it shows right above it */
+const listSort = (id, it = {}) => (Number(it.listAt) > 0 ? Number(it.listAt) : createdSort(id, it));
 const sortedOpts = list => Object.entries(list || {}).map(([id, o]) => [id, nameOf(o) || id]).sort((a, b) => a[1].localeCompare(b[1]));
 const optsHtml = (pairs, val, first) => (first != null ? `<option value="">${esc(first)}</option>` : '') + pairs.map(([k, n]) => `<option value="${esc(k)}" ${k === val ? 'selected' : ''}>${esc(n)}</option>`).join('');
 
@@ -338,7 +340,7 @@ function itemsPage(view, kind) {
     if (st.alert) rows = rows.filter(r => reorderTone(itemStock(r.it, st.branch), Number(r.it.reorderPoint || 0)) === st.alert);
     if (q) rows = rows.filter(r => normQ(`${r.it.nameAr || ''} ${r.it.nameEn || ''} ${r.it.name || ''}`).includes(q) || normQ(r.it.code).includes(q) || normQ(r.it.barcode).includes(q));
     if (!isP) return rows;
-    const newest = (a, b) => createdSort(b.id, b.it) - createdSort(a.id, a.it);
+    const newest = (a, b) => listSort(b.id, b.it) - listSort(a.id, a.it);
     if (needsSales()) { const m = salesMap(), dir = st.sort === 'salesDesc' ? -1 : 1; rows.sort((a, b) => dir * ((m[a.id] || 0) - (m[b.id] || 0))); }
     else if (st.sort === 'incompleteInfo') rows = rows.filter(r => r.it.incompleteInfo || r.it.missingInfo).sort(newest);
     else rows.sort(newest);
@@ -353,6 +355,25 @@ function itemsPage(view, kind) {
     return `<span class="loc-list">${rows.map(x => `<span${x.def ? ' class="def"' : ''}>${esc(locName(x.loc))} <b class="num">${n3(x.qty)}</b></span>`).join('')}${none > 1e-9 && rows.length ? `<span class="muted">${t('sl.noLocation')} <b class="num">${n3(none)}</b></span>` : ''}</span>`;
   };
   const named = (path, id) => esc(nameOf((LIVE.cache[path] || {})[id]) || '') || '<span class="muted">—</span>';
+  /* Duplicate: same details under a new code and barcode, no stock; it lists right above the original */
+  let duplicating = false;
+  async function duplicate(id) {
+    const src = (LIVE.cache[C.path] || {})[id];
+    if (!src || duplicating) return;
+    const bcs = new Set([LIVE.cache.products, LIVE.cache.stockMaterials].flatMap(l => Object.values(l || {})).map(x => String((x && x.barcode) || '')));
+    let barcode = newBarcode();
+    while (bcs.has(barcode)) barcode = newBarcode();
+    const keep = ['nameAr', 'nameEn', 'name', 'cost', 'unitId', 'countryOriginId', 'categoryId', 'fixedExpiryEnabled', 'fixedProductionDate', 'fixedExpiryDate',
+      'unitDefinitionQty', 'unitDefinitionUnitId', 'minStock', 'reorderPoint', 'maxStock', ...(isP ? ['price'] : [])];
+    const main = mainBranch(), copy = {};
+    keep.forEach(k => { if (src[k] !== undefined) copy[k] = src[k]; });
+    Object.assign(copy, { code: fixedCode(C.prefix, usedItemCodes()), barcode, openingQty: 0, mainBranchId: main, stockByBranch: main ? { [main]: 0 } : {},
+      createdAt: LIVE.now(), listAt: listSort(id, src) + 1, copiedFrom: id });
+    duplicating = true;
+    try { await LIVE.update({ [`${C.path}/${LIVE.newKey(C.path)}`]: copy }); toast(`${t('it.duplicated')} — ${copy.code}`); }
+    catch (ex) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
+    finally { duplicating = false; }
+  }
   function row(r, i) {
     const it = r.it, stock = itemStock(it, st.branch), tone = reorderTone(stock, Number(it.reorderPoint || 0));
     const alt = S.lang === 'ar' ? it.nameEn : it.nameAr;
@@ -373,6 +394,7 @@ function itemsPage(view, kind) {
       <td data-label="${t('it.barcode')}">${it.barcode ? `<button type="button" class="bc-cell" data-copy="${esc(it.barcode)}" data-tip="${t('it.clickCopy')}"><canvas data-bc="${esc(it.barcode)}" height="40"></canvas><small class="mono">${esc(it.barcode)}</small></button>` : '<span class="muted">—</span>'}</td>
       <td class="act-col"><div class="row-acts">${rowMenuBtn()}
         <button class="btn-icon sm" data-it="edit" aria-label="${t('edit')}">${icon('pencil')}</button>
+        <button class="btn-icon sm" data-it="dup" aria-label="${t('it.duplicate')}">${icon('copy')}</button>
         ${it.barcode ? `<button class="btn-icon sm" data-it="bc" aria-label="${t('it.downloadBc')}">${icon('download')}</button>` : ''}
         <button class="btn-icon sm danger" data-it="delete" aria-label="${t('delete')}">${icon('trash')}</button>
       </div></td></tr>`;
@@ -1103,7 +1125,7 @@ function itemsPage(view, kind) {
     if (a === 'export') return exportSelected();
     if (a === 'zip') return barcodesZip(b);
     const id = b.closest('tr') && b.closest('tr').dataset.id; if (!id) return;
-    ({ edit: openForm, delete: remove, bc: downloadOneBarcode })[a](id);
+    ({ edit: openForm, delete: remove, bc: downloadOneBarcode, dup: duplicate })[a](id);
   });
 
   // Card page: every category with how many items it holds and how many need reordering
