@@ -160,14 +160,16 @@ async function excelOut(rows, file) {
 }
 
 /* ---------- printed invoice (same content as the old page's invoice) ---------- */
-function printInvoice(o) {
+function printInvoice(o) { printHtml(invoiceDoc(o)); }
+function pdfInvoice(o) { savePdfHtml(invoiceDoc(o), `${t('o.invoice')} ${oNum(o)}`); }
+function invoiceDoc(o) {
   const items = oItems(o), num = [oNum(o), oCancelText(o)].filter(Boolean).join(' — ');
   const dir = S.lang === 'ar' ? 'rtl' : 'ltr';
   const m = n => `${fmtNum(n, 3, 3)} ${t('currency')}`;
   const meta = [[t('o.customer'), oCustName(o)], [t('c.phone'), oPhone(o)], [t('o.cashier'), oCashier(o)], [t('o.payment'), oPay(o)], [t('o.type'), oType(o)], [t('o.zone'), oZone(o)]];
   if (o.tableNumber) meta.push([t('o.table'), o.tableNumber]);
   if (o.address) meta.push([t('o.address'), o.address]);
-  printHtml(`<!doctype html><html lang="${S.lang}" dir="${dir}"><head><meta charset="utf-8"><title>${esc(t('o.invoice'))} ${esc(oNum(o))}</title>
+  return `<!doctype html><html lang="${S.lang}" dir="${dir}"><head><meta charset="utf-8"><title>${esc(t('o.invoice'))} ${esc(oNum(o))}</title>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
     <style>@page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:'IBM Plex Sans Arabic',system-ui,sans-serif;color:#0f172a;margin:0;font-size:12.5px}
     header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #16a34a;padding-bottom:12px;margin-bottom:16px}h1{font-size:22px;margin:0 0 4px}.brand{color:#16a34a;font-weight:700}
@@ -180,7 +182,7 @@ function printInvoice(o) {
     <div class="meta">${meta.map(([k, v]) => `<div><small>${esc(k)}</small>${esc(v)}</div>`).join('')}</div>
     <table><thead><tr><th>${esc(t('o.product'))}</th><th class="n">${esc(t('c.qty'))}</th><th class="n">${esc(t('o.price'))}</th><th class="n">${esc(t('c.total'))}</th></tr></thead>
     <tbody>${items.length ? items.map(it => `<tr><td>${esc(it.productName)}${it.notes || it.note ? `<div class="note">${esc(it.notes || it.note)}</div>` : ''}</td><td class="n">${esc(fmtNum(it.quantity, 3))} ${esc(it.unit || '')}</td><td class="n">${m(it.price)}</td><td class="n">${m(it.total)}</td></tr>`).join('') : `<tr><td colspan="4">—</td></tr>`}</tbody></table>
-    <div class="totals"><div><span>${esc(t('o.net'))}</span><b>${m(oSub(o))}</b></div><div><span>${esc(t('o.fee'))}</span><b>${m(oFee(o))}</b></div><div><span>${esc(t('o.grand'))}</span><b>${m(oTotal(o))}</b></div></div></body></html>`);
+    <div class="totals"><div><span>${esc(t('o.net'))}</span><b>${m(oSub(o))}</b></div><div><span>${esc(t('o.fee'))}</span><b>${m(oFee(o))}</b></div><div><span>${esc(t('o.grand'))}</span><b>${m(oTotal(o))}</b></div></div></body></html>`;
 }
 
 /* A sale invoice in a drawer (the item card opens it like its other documents); print stays a button */
@@ -619,7 +621,8 @@ PAGES.orders = view => {
     if (a === 'export') return allLoaded() && exportOrders();
     if (a === 'print') return allLoaded() && printOrders();
     const id = b.closest('tr') && b.closest('tr').dataset.id, o = id && (LIVE.cache.orders || {})[id]; if (!o) return;
-    if (a === 'print1' || a === 'pdf') return printInvoice(o);
+    if (a === 'print1') return printInvoice(o);
+    if (a === 'pdf') return pdfInvoice(o);
     if (a === 'edit') return openEdit(id);
     if (a === 'customer') return customerOrders(oCustId(o));
   });
@@ -769,7 +772,8 @@ PAGES['online-orders'] = view => {
     if (a === 'print') return printRows();
     if (a === 'refresh') { b.classList.add('loading'); await refreshOnline(); b.classList.remove('loading'); toast(t('oo.refreshed')); return; }
     const id = b.closest('tr') && b.closest('tr').dataset.id, o = id && OO.rows[id];
-    if (o && (a === 'print1' || a === 'pdf')) printInvoice(o);
+    if (o && a === 'print1') printInvoice(o);
+    if (o && a === 'pdf') pdfInvoice(o);
   });
 
   OO.subs.add(draw);

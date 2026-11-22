@@ -1431,6 +1431,18 @@ small.by { display: block; margin-top: 4px; font-size: .72rem; color: var(--text
 @keyframes popIn { from { opacity: 0; transform: translateY(-4px); } }
 
 .o-table td { white-space: nowrap; }
+/* Invoice tables: tighter cells so more columns fit; the number is large enough to read;
+   the actions column stays pinned at the row's end when the table still has to scroll */
+.o-table td { padding: 10px 10px; }
+.o-table th button { padding-inline: 10px; }
+.o-table td .cell-2 > b.mono { font-size: 1.02rem; font-weight: 700; color: var(--text); letter-spacing: 0; }
+.o-table td > .mono { font-size: .95em; }
+@media (min-width: 761px) {
+  .o-table .act-col { position: sticky; inset-inline-end: 0; z-index: 1; background: var(--surface-solid); box-shadow: -8px 0 12px -10px rgba(15, 23, 42, .25); }
+  [dir="rtl"] .o-table .act-col { box-shadow: 8px 0 12px -10px rgba(15, 23, 42, .25); }
+  .o-table th.act-col { background: var(--surface-3); z-index: 2; }
+  .o-table tbody tr:hover .act-col { background: color-mix(in srgb, var(--primary) 5%, var(--surface-solid)); }
+}
 tr.is-cancelled td { color: var(--text-3); }
 tr.is-cancelled .num, tr.is-cancelled b.num { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 60%, transparent); }
 .cancel-note { color: var(--danger); font-size: .74rem; font-weight: 600; white-space: normal; max-width: 260px; }

@@ -808,7 +808,7 @@ function itemsPage(view, kind) {
   async function exportResults(fmt, mode) {
     const x = exportTable(mode);
     if (!x.rows.length) { toast(t('ix.empty'), { tone: 'danger', ic: 'alert' }); return; }
-    if (fmt === 'pdf') { printHtml(pdfHtml(x)); return; }
+    if (fmt === 'pdf') { savePdfHtml(pdfHtml(x), t(C.route)); return; }
     try { await needLib('XLSX'); } catch (e) { libFailed(); return; }
     // Same layout as the PDF: a titled section per category, the same columns in the same order, the same colours
     const n = x.keys.length, last = n - 1, aoa = [], merges = [], heights = [];

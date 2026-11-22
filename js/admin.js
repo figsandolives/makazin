@@ -129,6 +129,16 @@ function printHtml(doc) {
   }
   printFrame(doc);
 }
+/* "Download PDF": the Windows app saves a PDF file (its Save dialog) instead of printing;
+   a browser opens the print dialog, where "Save as PDF" is the destination. */
+function savePdfHtml(doc, fileName) {
+  if (window.figsDesktop && window.figsDesktop.savePdf) {
+    window.figsDesktop.savePdf({ html: doc, fileName: fileSafe(fileName || 'document') + '.pdf' })
+      .then(r => { if (r && r.ok) toast(t('pdfSaved')); }, () => toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }));
+    return;
+  }
+  printFrame(doc);
+}
 function printFrame(doc) {
   const f = document.createElement('iframe');
   f.style.cssText = 'position:fixed;width:0;height:0;border:0;opacity:0';
