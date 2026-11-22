@@ -84,6 +84,16 @@ function setLang(lang, ev, el) {
   $$('.lang-seg').forEach(seg => { $$('button', seg).forEach(b => b.classList.toggle('on', b.dataset.lang === lang)); placeThumb(seg); });
   setTimeout(() => reveal(() => { S.lang = lang; applyPrefs(); renderAll(); }, o), 200);
 }
+/* Windows app: its own floating «إعدادات الطابعات» button sits in the bottom corner, on top of
+   drawer Save buttons — hide it and offer printer settings from the top bar instead. */
+const IS_DESKTOP = !!(window.figsDesktop && window.figsDesktop.openPrinterSettings);
+if (IS_DESKTOP) {
+  const hideFloat = () => [...document.body.children].forEach(el => {
+    if (el.tagName === 'BUTTON' && /إعدادات الطابعات/.test(el.textContent || '')) el.style.setProperty('display', 'none', 'important');
+  });
+  hideFloat();
+  new MutationObserver(hideFloat).observe(document.body, { childList: true });
+}
 function toggleTheme(ev, el) {
   const o = originOf(ev, el);
   reveal(() => { S.theme = S.theme === 'dark' ? 'light' : 'dark'; applyPrefs(); }, o);
@@ -206,6 +216,7 @@ function renderTopbar() {
       <button class="${S.lang === 'ar' ? 'on' : ''}" data-lang="ar" aria-pressed="${S.lang === 'ar'}">ع</button>
       <button class="${S.lang === 'en' ? 'on' : ''}" data-lang="en" aria-pressed="${S.lang === 'en'}">EN</button>
     </div>
+    ${IS_DESKTOP ? `<button class="btn-icon" data-act="printers" aria-label="${t('printerSettings')}" data-tip="${t('printerSettings')}">${icon('printer')}</button>` : ''}
     <button class="btn-icon theme-btn" data-act="theme" aria-label="${t('toggleTheme')}">${icon('sun', 'i-sun')}${icon('moon', 'i-moon')}</button>
     <div class="dd" id="ddNotif">
       <button class="btn-icon bell" data-act="dd" aria-label="${t('notifications')}">${icon('bell')}<span class="ping"></span></button>
@@ -780,6 +791,7 @@ document.addEventListener('click', e => {
     case 'menu': html.classList.toggle('sb-open'); break;
     case 'collapse': toggleCollapse(); break;
     case 'theme': toggleTheme(e, act); break;
+    case 'printers': window.figsDesktop.openPrinterSettings(); break;
     case 'cmdk': html.classList.remove('sb-open'); openCmdk(); break;
     case 'dd': { const d = act.closest('.dd'); const was = d.classList.contains('open'); $$('.dd.open').forEach(x => x.classList.remove('open')); d.classList.toggle('open', !was); break; }
     case 'markread': $$('.notif-item .unread').forEach(u => u.remove()); $('.bell .ping') && $('.bell .ping').remove(); break;
