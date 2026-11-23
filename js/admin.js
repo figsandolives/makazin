@@ -88,8 +88,13 @@ function confirmDialog({ title, body = '', ok, tone = 'success', icon: ic = 'che
 /* ---------- print ---------- */
 /* opts: { extra: { title, cols, rows } — a second table, barcode — printed under the header } */
 function printDoc(title, metaPairs, cols, rows, footer, opts = {}) {
-  const table = (c, r) => `<table><thead><tr>${c.map((h, i) => `<th class="${i ? 'n' : ''}">${esc(h)}</th>`).join('')}</tr></thead>
-    <tbody>${r.map(x => `<tr>${x.map((v, i) => `<td class="${i ? 'n' : ''}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  // Narrow, no-wrap cells only for short values (numbers, quantities, types); long text
+  // columns (item names) wrap so a wide table still fits the A4 page.
+  const table = (c, r) => {
+    const short = c.map((_, i) => i > 0 && r.every(x => String(x[i] == null ? '' : x[i]).length <= 18));
+    return `<table><thead><tr>${c.map((h, i) => `<th class="${short[i] ? 'n' : ''}">${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${r.map(x => `<tr>${x.map((v, i) => `<td class="${short[i] ? 'n' : ''}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  };
   let bc = '';
   if (opts.barcode && window.JsBarcode) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
