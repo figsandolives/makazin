@@ -609,6 +609,7 @@ Object.assign(I18N.ar, {
   'iv.pr.ingredients': 'المكونات', 'iv.pr.needWhole': 'أدخل كمية صحيحة أكبر من صفر لكل منتج', 'iv.pr.pickIssue': 'اختيار سند الصرف', 'iv.pr.noIssues': 'لا توجد سندات صرف من نوع إنتاج',
   'iv.pr.skip': 'تخطي', 'iv.pr.confirm': 'تأكيد', 'iv.pr.chooseIssue': 'اختر سند صرف أو اضغط تخطي', 'iv.pr.printLabels': 'طباعة الملصقات', 'iv.pr.printLabel': 'طباعة الملصق',
   'iv.pr.added': 'تمت الإضافة للمخزون', 'iv.pr.labelFail': 'تعذرت طباعة الملصق', 'iv.pr.linkedIssue': 'سند الصرف المرتبط', 'iv.pr.used': 'المواد المستخدمة',
+  'iv.pr.addNote': 'ترك ملاحظة', 'iv.pr.editNote': 'تعديل الملاحظة', 'iv.pr.delNote': 'حذف الملاحظة', 'iv.pr.noteOn': 'ملاحظة على سند #{n}', 'iv.pr.notePh': 'اكتب ملاحظتك هنا…', 'iv.pr.noteAdd': 'إضافة', 'iv.pr.noteSave': 'حفظ', 'iv.pr.noteOk': 'حسناً', 'iv.pr.noteDelQ': 'حذف الملاحظة؟', 'iv.pr.noteSaved': 'تمت إضافة الملاحظة', 'iv.pr.noteDeleted': 'تم حذف الملاحظة', 'iv.pr.noteEmpty': 'اكتب الملاحظة أولاً', 'iv.pr.noteOpen': 'عرض الملاحظة',
   'iv.pr.deleteQ': 'حذف سند الإنتاج؟', 'iv.pr.deleteNote': 'سيتم خصم الكميات المنتجة من مخزون {branch}.', 'iv.pr.issueGone': 'سند الصرف غير موجود',
   // موظفو الإنتاج
   'iv.ps.new': 'إضافة موظف إنتاج', 'iv.ps.edit': 'تعديل موظف إنتاج', 'iv.ps.sub': 'الموظفون الذين يُسجَّل عليهم الإنتاج والصرف', 'iv.ps.formSub': 'الاسم العربي والإنجليزي مطلوبان',
@@ -692,6 +693,7 @@ Object.assign(I18N.en, {
   'iv.pr.ingredients': 'Ingredients', 'iv.pr.needWhole': 'Enter a whole quantity above zero for every product', 'iv.pr.pickIssue': 'Select issue voucher', 'iv.pr.noIssues': 'No production issue vouchers',
   'iv.pr.skip': 'Skip', 'iv.pr.confirm': 'Confirm', 'iv.pr.chooseIssue': 'Pick an issue voucher or press Skip', 'iv.pr.printLabels': 'Print labels', 'iv.pr.printLabel': 'Print label',
   'iv.pr.added': 'added to stock', 'iv.pr.labelFail': 'Couldn’t print the label', 'iv.pr.linkedIssue': 'Linked issue voucher', 'iv.pr.used': 'Materials used',
+  'iv.pr.addNote': 'Leave a note', 'iv.pr.editNote': 'Edit note', 'iv.pr.delNote': 'Delete note', 'iv.pr.noteOn': 'Note on voucher #{n}', 'iv.pr.notePh': 'Write your note here…', 'iv.pr.noteAdd': 'Add', 'iv.pr.noteSave': 'Save', 'iv.pr.noteOk': 'OK', 'iv.pr.noteDelQ': 'Delete this note?', 'iv.pr.noteSaved': 'Note added', 'iv.pr.noteDeleted': 'Note deleted', 'iv.pr.noteEmpty': 'Write the note first', 'iv.pr.noteOpen': 'Open note',
   'iv.pr.deleteQ': 'Delete this production voucher?', 'iv.pr.deleteNote': 'The produced quantities will be deducted from {branch}.', 'iv.pr.issueGone': 'The issue voucher no longer exists',
   'iv.ps.new': 'Add production staff', 'iv.ps.edit': 'Edit production staff', 'iv.ps.sub': 'Staff that production and issues are recorded against', 'iv.ps.formSub': 'Arabic and English names are required',
   'iv.ps.vouchers': 'Production vouchers', 'iv.ps.none': 'No production staff', 'iv.ps.noneSub': 'Add the first one with “Add production staff”', 'iv.ps.deleteQ': 'Delete this staff member?',

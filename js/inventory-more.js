@@ -71,6 +71,7 @@ PAGES.production = view => {
       <button class="btn btn-ghost" data-pr="report">${icon('printer')}<span>${t('iv.printReport')}</span></button>
       <button class="btn btn-primary" data-pr="new">${icon('plus')}<span>${t('iv.pr.new')}</span></button>`, t('iv.pr.sub'))}
     <section class="kpis" id="prK"></section>
+    <div class="note-host" id="prHost"><div class="note-layer" id="prNotes"></div>
     <section class="card table-card" data-anim>
       <div class="toolbar">
         <label class="search-field">${icon('search')}<input type="search" id="prQ" placeholder="${t('iv.pr.searchPh')}" value="${esc(st.q)}" autocomplete="off"></label>
@@ -85,7 +86,7 @@ PAGES.production = view => {
         <tbody id="prBody"></tbody>
       </table></div>
       <footer class="pager" id="prPager"></footer>
-    </section>`;
+    </section></div>`;
 
   /* Old records of one voucher may be split per product: they show as one row */
   const all = () => {
@@ -124,7 +125,8 @@ PAGES.production = view => {
     const isF = !!(st.q || st.from || st.to || st.branch !== 'all' || st.staff !== 'all');
     setHtml(body, slice.length ? slice.map((x, i) => {
       const r = x.r;
-      return `<tr data-id="${esc(x.id)}" class="${first ? 'row-in' : ''}" style="--r:${i}">
+      const note = noteOf(x);
+      return `<tr data-id="${esc(x.id)}" class="${first ? 'row-in' : ''}${note ? ' has-note' : ''}" style="--r:${i}">
         <td data-label="${t('iv.pr.number')}"><b class="mono">#${esc(r.productionNumber ?? '-')}</b></td>
         <td data-label="${t('iv.pr.product')}"><span class="cell-2 pr-names">${x.items.map(it => `<b>${esc(prName(it))}</b>`).join('')}</span></td>
         <td data-label="${t('c.qty')}" class="end"><span class="cell-2">${x.items.map(it => `<b class="num">${esc(prQty(it))}</b>`).join('')}</span></td>
@@ -136,9 +138,98 @@ PAGES.production = view => {
         <td data-label="${t('iv.pr.issueNo')}">${r.issueNumber ? `<button class="badge tone-info badge-btn" data-pr="issue">#${esc(r.issueNumber)}</button>` : '<span class="muted">—</span>'}</td>
         <td class="act-col"><div class="row-acts pm-acts">${rowMenuBtn()}
           ${actBtn('view', 'pr', 'eye', t('view'))}${actBtn('print', 'pr', 'printer', t('iv.printReport'))}${actBtn('label', 'pr', 'tag', t('iv.pr.printLabel'))}
-          ${x.ids.length === 1 ? actBtn('edit', 'pr', 'pencil', t('edit')) : ''}${actBtn('delete', 'pr', 'trash', t('delete'), 'danger')}</div></td></tr>`;
+          ${x.ids.length === 1 ? actBtn('edit', 'pr', 'pencil', t('edit')) : ''}${actBtn('note', 'pr', 'note', t(note ? 'iv.pr.editNote' : 'iv.pr.addNote'))}
+          ${note ? actBtn('noteDel', 'pr', 'trash', t('iv.pr.delNote'), 'danger') : ''}${actBtn('delete', 'pr', 'trash', t('delete'), 'danger')}</div></td></tr>`;
     }).join('') : ivEmpty(10, isF, 'factory', t('iv.pr.none'), t('iv.pr.noneSub')));
     first = false;
+    placeNotes(true);
+  }
+
+  /* ---------- notes: a thread from the voucher number out to the free margin ---------- */
+  // Stored on the voucher's first record: production/{id}/note = { text, by, at }
+  const noteOf = x => { const n = ((LIVE.cache.production || {})[x.id] || {}).note; return n && String(n.text || '').trim() ? n : null; };
+  let placeT;
+  function placeNotes(fresh) {
+    const host = $('#prHost', view), layer = $('#prNotes', view); if (!host || !layer) return;
+    const hr = host.getBoundingClientRect(), wrap = $('.table-wrap', view), wr = wrap ? wrap.getBoundingClientRect() : hr;
+    const rtl = document.documentElement.dir === 'rtl', vr = view.getBoundingClientRect();
+    // Free margin between the card and the page edge (the sidebar side in Arabic): the bubble sits in its middle
+    const gap = Math.max(0, rtl ? vr.right - hr.right : hr.left - vr.left);
+    const out = Math.round(Math.max(32, Math.min(gap / 2 + 15, gap - 4)));
+    const html = $$('#prBody tr.has-note', view).map(tr => {
+      const num = $('td:first-child b', tr); if (!num) return '';
+      const nr = num.getBoundingClientRect(); if (!nr.width) return '';
+      if (nr.left < wr.left - 1 || nr.right > wr.right + 1) return '';
+      const cy = Math.round(nr.top + nr.height / 2 - hr.top);
+      // From just past the number to the card edge, then into the margin
+      const start = rtl ? hr.right - nr.right - 6 : nr.left - hr.left - 6;
+      const len = Math.max(12, Math.round(start));
+      return `<button type="button" class="note-pin${fresh ? ' in' : ''}" data-note="${esc(tr.dataset.id)}" style="top:${cy}px;--len:${len}px;--out:${out}px" aria-label="${t('iv.pr.noteOpen')}" data-tip="${t('iv.pr.noteOpen')}">
+        <i class="note-line"></i><span class="note-bub">${icon('note')}<b class="note-dot"></b></span></button>`;
+    }).join('');
+    layer.innerHTML = html;
+    clearTimeout(placeT);
+    // Rows rise in on first paint: place again once they settle
+    if (fresh) placeT = setTimeout(() => placeNotes(false), 650);
+  }
+  const onPlace = () => placeNotes(false);
+  window.addEventListener('resize', onPlace);
+  const ro = window.ResizeObserver ? new ResizeObserver(onPlace) : null;
+  ro && ro.observe($('#prHost', view));
+  $('.table-wrap', view).addEventListener('scroll', onPlace, { passive: true });
+
+  // A small dialog in the confirm layer; resolves with the clicked button's value
+  function noteDialog(html, onKey) {
+    return new Promise(resolve => {
+      const wrap = $('#confirm'), prev = document.activeElement;
+      wrap.innerHTML = `<div class="cf-backdrop" data-nx="close"></div><div class="cf note-cf" role="dialog" aria-modal="true" aria-labelledby="ncT">${html}</div>`;
+      requestAnimationFrame(() => wrap.classList.add('open'));
+      const done = v => { wrap.classList.remove('open'); document.removeEventListener('keydown', key, true); setTimeout(() => { wrap.innerHTML = ''; prev && prev.focus && prev.focus({ preventScroll: true }); }, 250); resolve(v); };
+      const key = e => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } else if (onKey) onKey(e, done, wrap); };
+      document.addEventListener('keydown', key, true);
+      wrap.onclick = e => { const b = e.target.closest('[data-nx]'); if (b) done(b.dataset.nx === 'close' ? null : b.dataset.nx); };
+    });
+  }
+  async function editNote(x) {
+    const cur = noteOf(x);
+    const box = $('#confirm');
+    const p = noteDialog(`<span class="cf-ic tone-info">${icon('note')}</span>
+      <h2 id="ncT">${t(cur ? 'iv.pr.editNote' : 'iv.pr.addNote')}</h2>
+      <p class="note-for">${esc(t('iv.pr.noteOn').replace('{n}', x.r.productionNumber ?? '-'))}</p>
+      <textarea class="note-ta" id="noteTa" rows="5" maxlength="1000" dir="auto" placeholder="${t('iv.pr.notePh')}">${esc(cur ? cur.text : '')}</textarea>
+      <div class="cf-btns"><button class="btn btn-ghost" data-nx="close">${t('cancel')}</button><button class="btn btn-primary" data-nx="save">${icon(cur ? 'check' : 'plus')}<span>${t(cur ? 'iv.pr.noteSave' : 'iv.pr.noteAdd')}</span></button></div>`,
+      (e, done) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('[data-nx="save"]', box).click(); } });
+    let text = '';
+    const ta = () => $('#noteTa', box);
+    setTimeout(() => { const el = ta(); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 80);
+    // Keep the text before the dialog clears; refuse an empty note without closing
+    const grab = e => {
+      const b = e.target.closest('[data-nx="save"]'); if (!b) return;
+      text = (ta() ? ta().value : '').trim();
+      if (!text) { e.stopImmediatePropagation(); toast(t('iv.pr.noteEmpty'), { tone: 'info', ic: 'info' }); shake($('.note-cf', box)); ta() && ta().focus(); }
+    };
+    box.addEventListener('click', grab, true);
+    const v = await p;
+    box.removeEventListener('click', grab, true);
+    if (v !== 'save' || !text) return;
+    try { await LIVE.update({ [`production/${x.id}/note`]: { text, by: me().name || null, at: LIVE.now ? LIVE.now() : Date.now() } }); toast(t('iv.pr.noteSaved'), { tone: 'success', ic: 'note' }); }
+    catch (e) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
+  }
+  function showNote(x) {
+    const n = noteOf(x); if (!n) return;
+    noteDialog(`<span class="cf-ic tone-info">${icon('note')}</span>
+      <h2 id="ncT">${esc(t('iv.pr.noteOn').replace('{n}', x.r.productionNumber ?? '-'))}</h2>
+      <blockquote class="note-text" dir="auto">${esc(n.text)}</blockquote>
+      <p class="note-meta">${icon('user')}<span>${esc(n.by || '-')}</span>${n.at ? `<span class="sep">·</span><span class="date">${fmtDateTime(n.at)}</span>` : ''}</p>
+      <div class="cf-btns one"><button class="btn btn-primary" data-nx="close">${t('iv.pr.noteOk')}</button></div>`);
+    setTimeout(() => { const b = $('#confirm [data-nx="close"].btn'); b && b.focus(); }, 80);
+  }
+  async function deleteNote(x) {
+    const n = noteOf(x); if (!n) return;
+    const ok = await confirmDialog({ title: t('iv.pr.noteDelQ'), body: `<blockquote class="note-text sm" dir="auto">${esc(n.text)}</blockquote>`, ok: t('delete'), tone: 'danger', icon: 'trash' });
+    if (!ok) return;
+    try { await LIVE.update({ [`production/${x.id}/note`]: null }); toast(t('iv.pr.noteDeleted'), { tone: 'danger' }); }
+    catch (e) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
   }
 
   /* ---------- form ---------- */
@@ -406,6 +497,8 @@ PAGES.production = view => {
   $('[data-per]', view).addEventListener('change', e => { st.per = +e.target.value; st.page = 1; draw(); });
   view.addEventListener('click', e => {
     const pg = e.target.closest('[data-page]'); if (pg && !pg.disabled) { st.page = +pg.dataset.page; draw(); return; }
+    const pin = e.target.closest('[data-note]');
+    if (pin) { const x = all().find(g => g.id === pin.dataset.note); if (x) showNote(x); return; }
     const b = e.target.closest('[data-pr]'); if (!b) return;
     const a = b.dataset.pr;
     if (a === 'new') return openForm(null);
@@ -417,6 +510,8 @@ PAGES.production = view => {
     else if (a === 'print') printReport(x);
     else if (a === 'label') printProdLabels(x.r, x.items.map(it => ({ it, copies: 1 })));
     else if (a === 'edit') openForm({ id, r: x.r });
+    else if (a === 'note') editNote(x);
+    else if (a === 'noteDel') deleteNote(x);
     else if (a === 'delete') remove(x);
   });
   // Card pages: production of the last 30 days, quantities per product, and batches expiring within 7 days
@@ -459,7 +554,7 @@ PAGES.production = view => {
   const unsub = LIVE.watch(PR_PATHS, draw);
   draw();
   takeDoc('production', PR_PATHS, id => { const x = all().find(g => g.id === id); if (x) details(x); });
-  return () => { unsub(); closeDrill(); freshDrawer(false); };
+  return () => { unsub(); closeDrill(); freshDrawer(false); clearTimeout(placeT); window.removeEventListener('resize', onPlace); ro && ro.disconnect(); };
 };
 
 /* =====================================================================

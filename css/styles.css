@@ -2117,3 +2117,37 @@ section.kd-chips .kd-chip b { font-size: 1.3rem; }
 .cc-row { display: flex; gap: 8px; }
 .cc-row > input { flex: 1; min-width: 0; }
 .cc-row .cc-sel { flex: none; width: 150px; }
+
+/* ---------- Production notes: a thread from the voucher number to the margin ---------- */
+.note-host { position: relative; }
+.note-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.note-pin { position: absolute; inset-inline-start: calc(var(--out, 32px) * -1); top: 0; height: 30px; margin-top: -15px; width: calc(var(--len) + var(--out, 32px));
+  display: flex; align-items: center; flex-direction: row-reverse; padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto; color: var(--warning, #F59E0B); }
+.note-line { flex: 1; height: 0; border-top: 2px dashed color-mix(in srgb, currentColor 75%, transparent); transform-origin: var(--from, left) center; }
+[dir="ltr"] .note-line { --from: right; }
+.note-bub { position: relative; flex: none; width: 30px; height: 30px; border-radius: 10px 10px 10px 3px; display: grid; place-items: center;
+  background: var(--surface-solid); border: 1.5px solid currentColor; box-shadow: 0 6px 16px -8px color-mix(in srgb, currentColor 80%, transparent);
+  transition: transform var(--fast) var(--spring), box-shadow var(--fast); }
+[dir="rtl"] .note-bub { border-radius: 10px 10px 3px 10px; }
+.note-bub .ic { width: 15px; height: 15px; }
+.note-dot { position: absolute; top: -4px; inset-inline-end: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); border: 2px solid var(--surface-solid); }
+.note-dot::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; background: var(--danger); animation: note-ping 1.8s ease-out infinite; z-index: -1; }
+.note-pin:hover .note-bub, .note-pin:focus-visible .note-bub { transform: scale(1.12); box-shadow: 0 10px 22px -8px color-mix(in srgb, currentColor 90%, transparent); }
+.note-pin:focus-visible { outline: none; }
+.note-pin.in .note-line { animation: note-draw 420ms var(--ease) both; }
+.note-pin.in .note-bub { animation: pop 520ms var(--spring) 300ms both; }
+@keyframes note-draw { from { transform: scaleX(0); } }
+@keyframes note-ping { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(2.6); opacity: 0; } }
+.cf-ic.tone-info { color: var(--warning, #F59E0B); background: color-mix(in srgb, var(--warning, #F59E0B) 14%, transparent); }
+.note-cf { width: min(480px, 100%); }
+.note-cf h2 { margin-bottom: 4px; }
+.note-for { color: var(--text-3); font-size: .84rem; margin-bottom: 14px; }
+.note-ta { width: 100%; min-height: 120px; resize: vertical; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text);
+  font: inherit; font-size: .95rem; line-height: 1.7; text-align: start; }
+.note-ta:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
+.note-text { margin: 6px 0 0; padding: 16px 18px; border-radius: 14px; text-align: start; white-space: pre-wrap; word-break: break-word; line-height: 1.85; font-size: .98rem; color: var(--text);
+  background: color-mix(in srgb, var(--warning, #F59E0B) 8%, var(--surface-2)); border-inline-start: 4px solid var(--warning, #F59E0B); max-height: 46vh; overflow: auto; }
+.note-text.sm { font-size: .88rem; padding: 12px 14px; }
+.note-meta { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 12px; color: var(--text-3); font-size: .8rem; }
+.note-meta .ic { width: 14px; height: 14px; }
+.cf-btns.one { grid-template-columns: 1fr; }
