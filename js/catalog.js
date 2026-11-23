@@ -1187,6 +1187,7 @@ function categoriesPage(view, kind) {
         <nav class="pc-trail" id="pcTrail" aria-label="${t('pc.path')}"></nav>
         <label class="search-field">${icon('search')}<input type="search" id="pcQ" placeholder="${t('pc.searchPh')}" value="${esc(st.q)}" autocomplete="off"></label>
       </div>
+      <div id="pcSeed"></div>
       <div class="pc-grid" id="pcGrid"></div>
       <div class="pc-items-wrap">
         <div class="pc-items-head"><b id="pcItemsTitle"></b></div>
@@ -1216,11 +1217,13 @@ function categoriesPage(view, kind) {
     $('[data-pc="assign"]', view).disabled = !cur;
     setHtml($('#pcTrail', view), `<button type="button" class="pc-crumb${cur ? '' : ' on'}" data-trail="0">${icon('layers')}<span>${t('pc.home')}</span></button>`
       + st.trail.map((id, i) => `${icon('chevRight', 'flip')}<button type="button" class="pc-crumb${i === st.trail.length - 1 ? ' on' : ''}" data-trail="${i + 1}">${esc(nameOf(cats()[id]) || '-')}</button>`).join(''));
+    drawSeed(cur);
     const q = normQ(st.q);
     const list = children(cur).filter(([, c]) => !q || normQ(`${c.nameAr || ''} ${c.nameEn || ''} ${kind === 'product' ? c.name || '' : ''}`).includes(q))
       .sort((a, b) => nameOf(a[1]).localeCompare(nameOf(b[1])));
     setHtml(grid, list.length ? list.map(([id, c], i) => {
-      const n = itemsIn(id).length, subs = children(id).length;
+      // Materials: count everything under the folder, so a main folder doesn't read «0»
+      const subs = children(id).length, n = kind === 'material' && subs ? (() => { const ids = new Set(subtree(id)); return Object.values(items()).filter(it => it && ids.has(it.categoryId)).length; })() : itemsIn(id).length;
       const count = C.subCount && subs > 0 && n === 0 ? t('pc.subsN').replace('{n}', subs) : K('itemsN').replace('{n}', n);
       const alt = S.lang === 'ar' ? c.nameEn : c.nameAr;
       return `<div class="pc-tile${first ? ' row-in' : ''}" data-id="${esc(id)}" style="--r:${i}">
@@ -1243,6 +1246,42 @@ function categoriesPage(view, kind) {
       : `<p class="muted pc-hint">${icon('info')}${K('noItems')}</p>`);
     first = false;
     if (picker) drawPicker();
+  }
+
+  /* ---------- the ready-made material folders (js/material-tree.js) ----------
+     Offered to a manager while there are no material folders at all. One write
+     makes the folders and puts each material in its folder; the material's old
+     text label (from the old site) is kept in oldCategory. */
+  const seedOn = () => kind === 'material' && typeof MATERIAL_TREE === 'object' && me().role === 'manager' && !Object.keys(cats()).length;
+  function drawSeed(cur) {
+    const box = $('#pcSeed', view); if (!box) return;
+    if (cur || !seedOn()) { box.innerHTML = ''; return; }
+    const its = items(), n = Object.keys(MATERIAL_TREE.assign).filter(id => its[id]).length;
+    const mains = MATERIAL_TREE.tree.filter(r => !r[3]).length;
+    setHtml(box, `<div class="pc-seed">${icon('layers')}<div><b>${t('pc.seedTitle')}</b><small>${t('pc.seedSub').replace('{m}', mains).replace('{f}', MATERIAL_TREE.tree.length).replace('{n}', n)}</small></div>
+      <button class="btn btn-primary" data-pc="seed">${icon('check')}<span>${t('pc.seedGo')}</span></button></div>`);
+  }
+  async function applySeed() {
+    if (!seedOn() || saving) return;
+    const its = items(), T = MATERIAL_TREE;
+    const ids = Object.keys(T.assign).filter(id => its[id]);
+    const ok = await confirmDialog({ title: t('pc.seedQ'), body: `<div class="cf-sum"><div><small>${t('pc.seedMains')}</small><b>${T.tree.filter(r => !r[3]).length}</b></div><div><small>${t('pc.seedFolders')}</small><b>${T.tree.length}</b></div><div><small>${t('pc.seedItems')}</small><b>${ids.length}</b></div></div><p class="cf-note">${t('pc.seedNote')}</p>`, ok: t('pc.seedGo'), icon: 'layers' });
+    if (!ok || !seedOn()) return;
+    const key = {}, up = {};
+    T.tree.forEach(([k, nameAr, nameEn, par]) => {
+      key[k] = LIVE.newKey(C.path);
+      up[`${C.path}/${key[k]}`] = { nameAr, nameEn, parentId: par ? key[par] : null };
+    });
+    ids.forEach(id => {
+      const old = its[id].categoryId;
+      up[`${C.items}/${id}/categoryId`] = key[T.assign[id]];
+      if (old && typeof old === 'string' && !its[id].oldCategory) up[`${C.items}/${id}/oldCategory`] = old;
+    });
+    saving = true;
+    const btn = $('[data-pc="seed"]', view); btn && btn.classList.add('loading');
+    try { await LIVE.update(up); toast(t('pc.seedDone')); }
+    catch (e) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
+    finally { saving = false; btn && btn.classList.remove('loading'); draw(); }
   }
 
   /* ---------- add / edit ---------- */
@@ -1404,6 +1443,7 @@ function categoriesPage(view, kind) {
     const b = e.target.closest('[data-pc]'); if (!b || b.disabled) return;
     const a = b.dataset.pc;
     if (a === 'new') return openForm(null, null);
+    if (a === 'seed') return applySeed();
     if (a === 'sub') return openForm(null, active());
     if (a === 'assign') return openPicker();
     if (a === 'back') return go(st.trail.slice(0, -1));

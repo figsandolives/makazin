@@ -1395,6 +1395,11 @@ small.by { display: block; margin-top: 4px; font-size: .72rem; color: var(--text
 .pc-txt small { font-size: .74rem; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-txt em { font-style: normal; font-size: .76rem; color: var(--primary); font-weight: 600; margin-top: 2px; }
 .pc-empty, .skel-tile { grid-column: 1 / -1; }
+.pc-seed { display: flex; align-items: center; gap: 14px; margin: 16px 20px 0; padding: 14px 16px; border-radius: 16px; border: 1px dashed var(--primary); background: var(--primary-soft); }
+.pc-seed > svg { width: 26px; height: 26px; color: var(--primary); flex: none; }
+.pc-seed > div { flex: 1; display: grid; gap: 2px; }
+.pc-seed small { color: var(--text-2); }
+@media (max-width: 760px) { .pc-seed { flex-wrap: wrap; margin: 12px 12px 0; } .pc-seed .btn { width: 100%; justify-content: center; } }
 .skel-tile { grid-column: auto; display: grid; gap: 10px; padding: 18px; min-height: 76px; }
 .pc-items-wrap { border-top: 1px solid var(--border); padding: 16px 20px 20px; }
 .pc-items-head { margin-bottom: 12px; }
