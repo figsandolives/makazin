@@ -97,9 +97,9 @@ function printDoc(title, metaPairs, cols, rows, footer, opts = {}) {
   }
   const dir = S.lang === 'ar' ? 'rtl' : 'ltr';
   const doc = `<!doctype html><html lang="${S.lang}" dir="${dir}"><head><meta charset="utf-8"><title>${esc(title)}</title>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&display=swap" rel="stylesheet">
     <style>@page{size:A4;margin:12mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    body{font-family:'IBM Plex Sans Arabic',system-ui,sans-serif;color:#0f172a;margin:0;font-size:12px;line-height:1.45}
+    body{font-family:'IBM Plex Sans Arabic','Noto Sans Telugu',system-ui,sans-serif;color:#0f172a;margin:0;font-size:12px;line-height:1.45}
     header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:2px solid #16a34a;padding-bottom:8px;margin-bottom:12px}
     h1{font-size:19px;margin:0}.brand{color:#16a34a;font-weight:700;font-size:12px}
     .meta{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid #94a3b8;border-radius:6px;overflow:hidden;margin-bottom:12px}

@@ -272,7 +272,7 @@ Object.assign(I18N.en, { 'sp.typeProduct': 'Product', 'sp.typeMaterial': 'Materi
 Object.assign(I18N.ar, {
   'it.code': 'الرمز', 'it.price': 'سعر البيع', 'it.cost': 'التكلفة', 'it.unit': 'الوحدة', 'it.stock': 'الكمية في المخزون', 'it.category': 'التصنيف', 'it.storage': 'مكان التخزين', 'it.origin': 'بلد المنشأ',
   'it.min': 'الحد الأدنى', 'it.reorder': 'نقطة إعادة الطلب', 'it.max': 'الحد الأعلى', 'it.barcode': 'الباركود', 'it.barcodeValue': 'قيمة الباركود', 'it.generate': 'إنشاء',
-  'it.nameAr': 'الاسم بالعربي', 'it.nameEn': 'الاسم بالإنجليزي', 'it.opening': 'الرصيد الافتتاحي', 'it.openingLocked': 'لا يتغير بعد الإضافة', 'it.chooseUnit': 'اختر الوحدة',
+  'it.nameAr': 'الاسم بالعربي', 'it.nameEn': 'الاسم بالإنجليزي', 'it.nameTe': 'الاسم بالتلغو', 'it.opening': 'الرصيد الافتتاحي', 'it.openingLocked': 'لا يتغير بعد الإضافة', 'it.chooseUnit': 'اختر الوحدة',
   'it.unitDef': 'تعريف الوحدة', 'it.unitDefQty': 'الكمية', 'it.unitDefUnit': 'الوحدة', 'it.unitDefBoth': 'أدخل الكمية والوحدة معاً، أو اتركهما فارغين',
   'it.fixedExpiry': 'تاريخ صلاحية محدد', 'it.prodDate': 'تاريخ الإنتاج', 'it.expDate': 'تاريخ الانتهاء', 'it.datesBoth': 'اختر تاريخ الإنتاج وتاريخ الانتهاء',
   'it.preview': 'معاينة الباركود', 'it.downloadBc': 'تحميل الباركود', 'it.duplicate': 'نسخ', 'it.duplicated': 'تم نسخ المنتج', 'it.bcInvalid': 'الباركود يحتوي على رموز غير مدعومة', 'it.copied': 'تم نسخ الباركود', 'it.clickCopy': 'اضغط للنسخ',
@@ -311,7 +311,7 @@ Object.assign(I18N.ar, {
 Object.assign(I18N.en, {
   'it.code': 'Code', 'it.price': 'Sale price', 'it.cost': 'Cost', 'it.unit': 'Unit', 'it.stock': 'Stock qty', 'it.category': 'Category', 'it.storage': 'Storage', 'it.origin': 'Origin',
   'it.min': 'Min', 'it.reorder': 'Reorder point', 'it.max': 'Max', 'it.barcode': 'Barcode', 'it.barcodeValue': 'Barcode value', 'it.generate': 'Generate',
-  'it.nameAr': 'Arabic name', 'it.nameEn': 'English name', 'it.opening': 'Opening balance', 'it.openingLocked': 'Fixed once the item is added', 'it.chooseUnit': 'Choose a unit',
+  'it.nameAr': 'Arabic name', 'it.nameEn': 'English name', 'it.nameTe': 'Telugu name', 'it.opening': 'Opening balance', 'it.openingLocked': 'Fixed once the item is added', 'it.chooseUnit': 'Choose a unit',
   'it.unitDef': 'Unit definition', 'it.unitDefQty': 'Quantity', 'it.unitDefUnit': 'Unit', 'it.unitDefBoth': 'Enter both quantity and unit, or leave both empty',
   'it.fixedExpiry': 'Fixed expiry date', 'it.prodDate': 'Production date', 'it.expDate': 'Expiry date', 'it.datesBoth': 'Choose the production and expiry dates',
   'it.preview': 'Barcode preview', 'it.downloadBc': 'Download barcode', 'it.duplicate': 'Duplicate', 'it.duplicated': 'Item duplicated', 'it.bcInvalid': 'The barcode has unsupported characters', 'it.copied': 'Barcode copied', 'it.clickCopy': 'Click to copy',

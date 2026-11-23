@@ -745,7 +745,10 @@ function crNames(it) {
   const data = itemData(ivType(it), it.itemId) || {};
   const u = unitName(it.unitId || data.unitId);
   const ar = it.nameAr || it.name || nameOf(data) || '-', en = it.nameEn || data.nameEn || '';
-  return { ar: u ? `${ar} (${u})` : ar, en: en && normQ(en) !== normQ(ar) ? (u ? `${en} (${u})` : en) : '-' };
+  // Telugu (for the Telugu-speaking staff): the record's nameTe, while it still matches its English name
+  const teOf = rec => (rec && rec.nameTe && String(rec.nameTeEn || '').trim() === String(rec.nameEn || rec.name_en || '').trim() ? rec.nameTe : '');
+  const te = teOf(data), uRec = LIVE.cache.units && LIVE.cache.units[it.unitId || data.unitId], uTe = teOf(uRec) || u;
+  return { ar: u ? `${ar} (${u})` : ar, en: en && normQ(en) !== normQ(ar) ? (u ? `${en} (${u})` : en) : '-', te: te ? (uTe ? `${te} (${uTe})` : te) : '-' };
 }
 const crExecutor = r => r.sentBy || r.processedBy || ((LIVE.cache.cashierTransfers || {})[r.transferId] || {}).storekeeperName || '-';
 const crMeta = r => [[t('iv.cr.number'), r.requestNumber || '-'], [t('c.branch'), crBranch(r)], [t('iv.cr.requester'), r.cashierName || '-'], [t('iv.cr.executor'), crExecutor(r)],
@@ -891,12 +894,12 @@ PAGES['cashier-requests'] = view => {
 
   function printGroup(r, g) {
     const rows = items$(r.items).filter(it => crGroup(it.groupKey) === g);
-    printDoc(t('cashier-requests'), [...crMeta(r), [t('iv.cr.group'), t(`iv.cr.g.${g}`)]], [t('iv.rowNo'), t('it.nameAr'), t('it.nameEn'), t('c.type'), t('c.qty')],
-      rows.map((it, i) => [i + 1, crNames(it).ar, crNames(it).en, crTypeLabel(it.itemType), qtyFmt(Number(it.qty || it.requestedQty || 0))]));
+    printDoc(t('cashier-requests'), [...crMeta(r), [t('iv.cr.group'), t(`iv.cr.g.${g}`)]], [t('iv.rowNo'), t('it.nameAr'), t('it.nameEn'), t('it.nameTe'), t('c.type'), t('c.qty')],
+      rows.map((it, i) => [i + 1, crNames(it).ar, crNames(it).en, crNames(it).te, crTypeLabel(it.itemType), qtyFmt(Number(it.qty || it.requestedQty || 0))]));
   }
   function printFull(r) {
-    printDoc(t('cashier-requests'), crMeta(r), [t('iv.rowNo'), t('it.nameAr'), t('it.nameEn'), t('iv.cr.group'), t('c.type'), t('iv.cr.requested'), t('iv.cr.sentQty'), t('iv.cr.receivedQty')],
-      items$(r.items).map((it, i) => [i + 1, crNames(it).ar, crNames(it).en, t(`iv.cr.g.${crGroup(it.groupKey)}`), crTypeLabel(it.itemType), qtyFmt(Number(it.requestedQty || it.qty || 0)), qtyFmt(Number(it.sentQty || 0)), qtyFmt(Number(it.receivedQty || 0))]),
+    printDoc(t('cashier-requests'), crMeta(r), [t('iv.rowNo'), t('it.nameAr'), t('it.nameEn'), t('it.nameTe'), t('iv.cr.group'), t('c.type'), t('iv.cr.requested'), t('iv.cr.sentQty'), t('iv.cr.receivedQty')],
+      items$(r.items).map((it, i) => [i + 1, crNames(it).ar, crNames(it).en, crNames(it).te, t(`iv.cr.g.${crGroup(it.groupKey)}`), crTypeLabel(it.itemType), qtyFmt(Number(it.requestedQty || it.qty || 0)), qtyFmt(Number(it.sentQty || 0)), qtyFmt(Number(it.receivedQty || 0))]),
       r.status === 'received' ? [[t('iv.cr.ack'), t('iv.cr.ackText').replace('{name}', r.receivedByCashier || r.cashierName || '-')], [t('iv.cr.receivedAt'), fmtDateTime(r.receivedAt)]] : null);
   }
   /* The A4 sheet handed over with the goods: its barcode opens the receipt in the cashier */
