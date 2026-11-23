@@ -723,7 +723,7 @@ Object.assign(I18N.ar, {
   'dv.none': 'لا توجد أجهزة مفتوحة', 'dv.noneSub': 'يظهر هنا كل جهاز متصل الآن أو مرتبط بفرع',
   'dv.deleteQ': 'حذف الجهاز؟', 'dv.deleteNote': 'يُحذف الجهاز ويُلغى ربطه، ولن يفتح الكاشير عليه حتى يُربط من جديد',
   'dv.cashiers': 'الكاشير', 'dv.cashierName': 'اسم الكاشير', 'dv.cashierCode': 'كود الكاشير', 'dv.addCashier': 'إضافة كاشير', 'dv.editCashier': 'تعديل كاشير',
-  'dv.cashierSub': 'يدخل الكاشير بهذا الكود', 'dv.genCode': 'توليد كود', 'dv.codeTaken': 'هذا الكود مستخدم لكاشير آخر',
+  'dv.cashierSub': 'يدخل الكاشير بهذا الكود', 'dv.genCode': 'توليد كود', 'dv.cashierLang': 'لغة شاشة الكاشير', 'dv.langDefault': 'عادية (عربي / إنجليزي)', 'dv.langTe': 'తెలుగు تلغو', 'dv.langHint': 'عند دخول هذا الموظف تتحول شاشة الكاشير كاملة لهذه اللغة، ولا تحتاج أي ترجمة عند إضافة المنتجات', 'dv.codeTaken': 'هذا الكود مستخدم لكاشير آخر',
   'dv.noCashiers': 'لا يوجد كاشير بعد', 'dv.noCashiersSub': 'أضف كاشير أو استورد ملف إكسل', 'dv.deleteCashierQ': 'حذف الكاشير؟',
   'dv.import': 'استيراد كاشير', 'dv.impStep1Sub': 'صف لكل كاشير — الاسم والكود مطلوبان', 'dv.impStep2Sub': 'الأكواد الموجودة مسبقاً أو المكررة في الملف يتم تجاهلها',
   'dv.impExisting': 'كود موجود مسبقاً (تم تجاهله): {n}', 'dv.impInvalid': 'صف ناقص (تم تجاهله): {n}'
@@ -737,7 +737,7 @@ Object.assign(I18N.en, {
   'dv.none': 'No open devices', 'dv.noneSub': 'Every device online now or linked to a branch shows here',
   'dv.deleteQ': 'Delete device?', 'dv.deleteNote': 'The device is deleted and unlinked; the cashier won’t open on it until it is linked again',
   'dv.cashiers': 'Cashiers', 'dv.cashierName': 'Cashier name', 'dv.cashierCode': 'Cashier code', 'dv.addCashier': 'Add cashier', 'dv.editCashier': 'Edit cashier',
-  'dv.cashierSub': 'The cashier signs in with this code', 'dv.genCode': 'Generate', 'dv.codeTaken': 'Another cashier already uses this code',
+  'dv.cashierSub': 'The cashier signs in with this code', 'dv.genCode': 'Generate', 'dv.cashierLang': 'Cashier screen language', 'dv.langDefault': 'Default (Arabic / English)', 'dv.langTe': 'తెలుగు Telugu', 'dv.langHint': 'When this employee signs in, the whole cashier screen switches to this language. No translations are needed when adding products', 'dv.codeTaken': 'Another cashier already uses this code',
   'dv.noCashiers': 'No cashiers yet', 'dv.noCashiersSub': 'Add a cashier or import an Excel file', 'dv.deleteCashierQ': 'Delete cashier?',
   'dv.import': 'Import cashiers', 'dv.impStep1Sub': 'One row per cashier — name and code are required', 'dv.impStep2Sub': 'Codes that already exist or repeat in the file are skipped',
   'dv.impExisting': 'Code already exists (skipped): {n}', 'dv.impInvalid': 'Incomplete row (skipped): {n}'

@@ -153,7 +153,7 @@ PAGES.devices = view => {
     setHtml($('#dvCashPager', view), pagerHtml(cs, list.length).replace(/data-page=/g, 'data-cpage='));
     const slice = list.slice((cs.page - 1) * cs.per, cs.page * cs.per);
     setHtml($('#dvCash', view), slice.length ? slice.map(([id, c], i) => `<tr data-cid="${esc(id)}" class="${first ? 'row-in' : ''}" style="--r:${i}">
-        <td data-label="${t('dv.cashierName')}"><b>${esc(c.name || '-')}</b></td>
+        <td data-label="${t('dv.cashierName')}"><b>${esc(c.name || '-')}</b>${c.language === 'te' ? ` <span class="badge tone-info">${t('dv.langTe')}</span>` : ''}</td>
         <td data-label="${t('dv.cashierCode')}"><span class="mono">${esc(c.code || '-')}</span></td>
         <td class="act-col"><div class="row-acts">${rowMenuBtn()}
           <button class="btn-icon sm" data-dv="editCashier" aria-label="${t('edit')}">${icon('pencil')}</button>
@@ -174,6 +174,9 @@ PAGES.devices = view => {
           <div class="dv-code"><input id="caCode" class="mono" dir="ltr" inputmode="numeric" value="${esc(c ? c.code || '' : '')}" autocomplete="off">
             <button type="button" class="btn btn-ghost" id="caGen">${icon('refresh')}<span>${t('dv.genCode')}</span></button></div>
           <small class="err" id="caCodeErr"></small></div>
+        <div class="field"><label for="caLang">${t('dv.cashierLang')}</label>
+          <div class="select"><select id="caLang"><option value="">${t('dv.langDefault')}</option><option value="te"${c && c.language === 'te' ? ' selected' : ''}>${t('dv.langTe')}</option></select>${icon('chevDown')}</div>
+          <small class="hint">${t('dv.langHint')}</small></div>
       </form>
       <footer class="dr-foot"><button class="btn btn-ghost" data-close>${t('cancel')}</button><button class="btn btn-primary" id="caSave">${icon('check')}<span>${t(c ? 'save' : 'add')}</span></button></footer>`;
     openLayer('#drawer');
@@ -183,7 +186,7 @@ PAGES.devices = view => {
     $('#caGen', dr).addEventListener('click', () => { codeIn.value = newCode(); $('#caCodeErr', dr).textContent = ''; codeIn.focus(); });
     const save = async e => {
       e && e.preventDefault(); if (saving) return;
-      const name = nameIn.value.trim(), code = toLatin(codeIn.value.trim());
+      const name = nameIn.value.trim(), code = toLatin(codeIn.value.trim()), language = $('#caLang', dr).value || null;
       let bad = false;
       if (!name) { $('#caNameErr', dr).textContent = t('required'); bad = true; }
       if (!code) { $('#caCodeErr', dr).textContent = t('required'); bad = true; }
@@ -191,8 +194,8 @@ PAGES.devices = view => {
       if (bad) { (name ? codeIn : nameIn).focus(); return; }
       const btn = $('#caSave', dr); saving = true; btn.classList.add('loading');
       try {
-        if (id) await LIVE.update({ [`cashiers/${id}/name`]: name, [`cashiers/${id}/code`]: code });
-        else await LIVE.update({ [`cashiers/${LIVE.newKey('cashiers')}`]: { name, code, active: true } });
+        if (id) await LIVE.update({ [`cashiers/${id}/name`]: name, [`cashiers/${id}/code`]: code, [`cashiers/${id}/language`]: language });
+        else await LIVE.update({ [`cashiers/${LIVE.newKey('cashiers')}`]: { name, code, active: true, ...(language ? { language } : {}) } });
         toast(t(id ? 'saved' : 'added')); closeLayers();
       } catch (ex) { toast(t('pm.saveFailed'), { tone: 'danger', ic: 'alert' }); }
       finally { saving = false; btn.classList.remove('loading'); }
