@@ -1285,6 +1285,14 @@ function categoriesPage(view, kind) {
   }
 
   /* ---------- add / edit ---------- */
+  // Where a folder can move to: the top level or any folder outside its own subtree, shown by full path
+  const pathOf = id => { const names = []; for (let x = id, n = 0; x && cats()[x] && n < 12; x = cats()[x].parentId, n++) names.unshift(nameOf(cats()[x]) || '-'); return names.join(' › '); };
+  function placeOpts(editId, current) {
+    const own = new Set(subtree(editId));
+    const opts = Object.keys(cats()).filter(id => !own.has(id)).map(id => [id, pathOf(id)]).sort((a, b) => a[1].localeCompare(b[1]));
+    return `<option value=""${current ? '' : ' selected'}>${esc(t('pc.topLevel'))}</option>`
+      + opts.map(([id, label]) => `<option value="${esc(id)}"${id === current ? ' selected' : ''}>${esc(label)}</option>`).join('');
+  }
   function openForm(editId, parentId) {
     const c = editId ? cats()[editId] : null;
     const parent = editId ? (c && c.parentId) || null : parentId;
@@ -1295,6 +1303,7 @@ function categoriesPage(view, kind) {
       <form class="dr-body" novalidate id="pcForm">
         <div class="field"><label for="cAr">${t('it.nameAr')} <em>*</em></label><input id="cAr" dir="rtl" value="${esc(c ? c.nameAr || '' : '')}" autocomplete="off"><small class="err"></small></div>
         <div class="field"><label for="cEn">${t('it.nameEn')} <em>*</em></label><input id="cEn" dir="ltr" value="${esc(c ? c.nameEn || '' : '')}" autocomplete="off"><small class="err"></small></div>
+        ${c ? `<div class="field"><label for="cParent">${t('pc.place')}</label><div class="select"><select id="cParent">${placeOpts(editId, parent)}</select>${icon('chevDown')}</div><small class="hint">${t('pc.placeHint')}</small></div>` : ''}
       </form>
       <footer class="dr-foot"><button class="btn btn-ghost" data-close>${t('cancel')}</button><button class="btn btn-primary" id="cSave">${icon('check')}<span>${t(c ? 'save' : 'add')}</span></button></footer>`;
     openLayer('#drawer');
@@ -1308,7 +1317,8 @@ function categoriesPage(view, kind) {
       if (!nameAr) { err('#cAr', t('required')); bad = true; }
       if (!nameEn) { err('#cEn', t('required')); bad = true; }
       if (bad) return;
-      const payload = { nameAr, nameEn, parentId: parent || null };
+      const place = $('#cParent', dr);
+      const payload = { nameAr, nameEn, parentId: (place ? place.value : parent) || null };
       const btn = $('#cSave', dr); saving = true; btn.classList.add('loading');
       try {
         if (editId) await LIVE.update({ [`${C.path}/${editId}/nameAr`]: nameAr, [`${C.path}/${editId}/nameEn`]: nameEn, [`${C.path}/${editId}/parentId`]: payload.parentId });
