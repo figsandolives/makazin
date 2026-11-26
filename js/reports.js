@@ -298,6 +298,7 @@ PAGES.reports = view => {
         <div class="seg range-seg" id="rpSeg" role="tablist"><i class="thumb"></i>${['day', 'week', 'month'].map(p => `<button class="${st.period === p ? 'on' : ''}" data-period="${p}">${t('rp.' + p)}</button>`).join('')}</div>
       </section>
       <section class="kpis" id="rpDK"></section>
+      <div id="rpDefer"></div>
       <section class="rp-metrics" id="rpMetrics"></section>
       <section class="rp-ins" id="rpIns"></section>
       <section class="card" data-anim>
@@ -332,11 +333,24 @@ PAGES.reports = view => {
       $$('.rp-metric', box).forEach((el, i) => cards[i].bind(el));
     }
     drawInsights(range, cmpRange);
+    drawDeferred(range);
     setHtml($('#rpTpMode', view), [['top', t('rp.modeTop')], ['bottom', t('rp.modeBottom')]].map(([v, l]) => `<option value="${v}" ${st.tp.mode === v ? 'selected' : ''}>${l}</option>`).join(''));
     setHtml($('#rpTpLimit', view), [10, 50, 100].map(n => `<option ${st.tp.limit === n ? 'selected' : ''}>${n}</option>`).join(''));
     setHtml($('#rpTpSub', view), `${rpRangeLabel(range)} · ${esc(rpBranchName(st.branch))}`);
     setHtml($('#rpTp', view), tpChart(tpData({ ...st.tp, q: '', ...periodF(), branch: st.branch })));
     placeThumb($('#rpSeg', view));
+  }
+
+  /* Deferred invoices of the period: the ones counted in it but created on other days, and the ones
+     created in it but counted on another day. A chip opens the invoice. */
+  function drawDeferred(range) {
+    const inR = ts => ts >= range.start && ts <= range.end;
+    const mine = x => !String(x.id).startsWith('online:') && (st.branch === 'all' || x.o.branchId === st.branch) && oDeferred(x.id, x.o);
+    const all = rpActive().filter(mine);
+    const ins = all.filter(x => inR(x.ts) && !inR(createdSort(x.id, x.o))), outs = all.filter(x => inR(createdSort(x.id, x.o)) && !inR(x.ts));
+    const attr = x => ` data-inv="${inv(x.o)}" role="button" tabindex="0"`;
+    // invRef is rebuilt on every draw, so the chips are too
+    $('#rpDefer', view).innerHTML = deferCard(ins, 'in', attr) + deferCard(outs, 'out', attr);
   }
 
   /* ---------- extra analytics for the dashboard period ---------- */
@@ -466,8 +480,8 @@ PAGES.reports = view => {
         return true;
       };
       const rows = inPeriod.filter(x => match(x) && (f.branch === 'all' || x.o.branchId === f.branch) && (!f.src || f.src === 'all' || (f.src === 'online') === !!x.o.online) && (f.customer === 'all' || rpCustKey(x.o) === f.customer))
-        .map(({ o, ts }) => ({ o, ts, num: oNum(o), cust: oCustName(o), phone: oPhone(o), products: rpProducts(o), fee: oCancelled(o) ? rpNum(o.deliveryFee ?? o.deliveryPrice) : oFee(o), total: rpNum(o.total), net: oCancelled(o) ? 0 : rpNet(o) }))
-        .filter(r => !q || normQ(`${r.num} ${r.cust} ${r.phone}`).includes(q) || oProductText(r.o).includes(q)).sort((a, b) => b.ts - a.ts);
+        .map(({ id, o, ts }) => ({ id, o, ts, num: oNum(o), cust: oCustName(o), phone: oPhone(o), products: rpProducts(o), fee: oCancelled(o) ? rpNum(o.deliveryFee ?? o.deliveryPrice) : oFee(o), total: rpNum(o.total), net: oCancelled(o) ? 0 : rpNet(o) }))
+        .filter(r => !q || normQ(`${r.num} ${r.cust} ${r.phone}`).includes(q) || oProductText(r.o).includes(q)).sort((a, b) => oDayKey(b.id, b.o) - oDayKey(a.id, a.o)) // deferred invoices at the top of their day;
       const tot = rows.reduce((a, r) => ({ n: a.n + 1, products: a.products + r.products, fee: a.fee + r.fee, total: a.total + r.total, net: a.net + r.net }), { n: 0, products: 0, fee: 0, total: 0, net: 0 });
       const opts = (key, label) => [...new Set(inPeriod.map(({ o }) => o[key]).filter(Boolean))].map(id => [id, label(id)]).sort((a, b) => a[1].localeCompare(b[1]));
       return { range, rows, tot, branches: opts('branchId', id => nameOf((LIVE.cache.branches || {})[id]) || id), cashiers: opts('cashierId', id => (id === 'online' ? t('online-orders') : ((LIVE.cache.cashiers || {})[id] || {}).name || id)), customers: [...inPeriod.reduce((m, { o }) => { const k = rpCustKey(o); if (k && !m.has(k)) m.set(k, rpCustLabel(o)); return m; }, new Map())].sort((a, b) => a[1].localeCompare(b[1])) };
@@ -483,10 +497,10 @@ PAGES.reports = view => {
       kpis([[t('rp.invoices'), d.tot.n, 'num', 'receipt', 'c1'], [t('rp.totalProducts'), d.tot.products, 'money', 'package', 'c2'], [t('rp.totalDelivery'), d.tot.fee, 'money', 'bike', 'c3'], [t('rp.totalSales'), d.tot.total, 'money', 'wallet', 'c4'], [t('rp.totalNet'), d.tot.net, 'money', 'chart', 'c5']]);
       const c = this.cols();
       setHtml($('#rpHead', view), th(c.slice(0, 7).concat(c.slice(7).map(x => [x, 'end']))));
-      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<b class="mono">#${esc(r.num)}</b>`)}${td(c[2], `<span class="date">${fmtDateTime(oTime(r.o))}</span>`)}${td(c[3], esc(r.cust))}${td(c[4], `<span class="mono">${esc(r.phone)}</span>`)}${td(c[5], esc(oBranch(r.o)))}${td(c[6], esc(oCashier(r.o)))}${td(c[7], money(r.products), 'end num')}${td(c[8], money(r.fee), 'end num')}${td(c[9], `<b>${money(r.total)}</b>`, 'end num')}</tr>`).join('') : empty(10, f.q || f.branch !== 'all' || f.cashier !== 'all' || f.customer !== 'all'));
+      setHtml($('#rpBody', view), d.rows.length ? d.rows.map((r, i) => `<tr data-inv="${inv(r.o)}" class="rp-click-row ${first ? 'row-in' : ''}" style="--r:${Math.min(i, 20)}">${td('#', i + 1)}${td(c[1], `<span class="cell-2"><b class="mono">#${esc(r.num)}</b>${oDeferred(r.id, r.o) ? `<small class="defer-note">${icon('clock')}${t('o.deferredTo')} ${esc(r.o.accountingDate)} (${t('o.createdOn')} ${ymdLocal(createdSort(r.id, r.o))})</small>` : ''}</span>`)}${td(c[2], `<span class="date">${fmtDateTime(rpClock(r.o))}</span>`)}${td(c[3], esc(r.cust))}${td(c[4], `<span class="mono">${esc(r.phone)}</span>`)}${td(c[5], esc(oBranch(r.o)))}${td(c[6], esc(oCashier(r.o)))}${td(c[7], money(r.products), 'end num')}${td(c[8], money(r.fee), 'end num')}${td(c[9], `<b>${money(r.total)}</b>`, 'end num')}</tr>`).join('') : empty(10, f.q || f.branch !== 'all' || f.cashier !== 'all' || f.customer !== 'all'));
       setHtml($('#rpFoot', view), '');
     },
-    rows() { return this.data().rows.map((r, i) => [i + 1, r.num, fmtDateTime(oTime(r.o)), r.cust, r.phone, oBranch(r.o), oCashier(r.o), r.products, r.fee, r.total]); },
+    rows() { return this.data().rows.map((r, i) => [i + 1, oDeferred(r.id, r.o) ? `${r.num} — ${t('o.deferredTo')} ${r.o.accountingDate}` : r.num, fmtDateTime(rpClock(r.o)), r.cust, r.phone, oBranch(r.o), oCashier(r.o), r.products, r.fee, r.total]); },
     export() { const c = this.cols(); excelOut(this.rows().map(r => Object.fromEntries(c.map((h, j) => [h, j >= 7 ? +r[j].toFixed(3) : r[j]]))), 'metric-details.xlsx'); },
     print() {
       const d = this.data(), f = st.md;
@@ -963,7 +977,7 @@ PAGES.reports = view => {
       return;
     }
     if (e.target.closest('input, button, a, select, label')) return;
-    const invRow = e.target.closest('tr[data-inv]');
+    const invRow = e.target.closest('tr[data-inv], .item-chip[data-inv]');
     if (invRow) { const o = invRef.get(invRow.dataset.inv); if (o) invoiceDetails(o); return; }
     const row = e.target.closest('tr[data-go]'); if (!row) return;
     if (st.view === 'sales') {

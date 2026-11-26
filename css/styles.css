@@ -1460,6 +1460,11 @@ tr.is-cancelled .num, tr.is-cancelled b.num { text-decoration: line-through; tex
 .defer-head small { color: var(--text-3); font-size: .8rem; flex-basis: 100%; }
 .defer-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .defer-list .item-chip { padding-inline: 12px; }
+/* Deferred to this day: counted here, so the calm accent instead of red */
+.defer-card.defer-in { border-inline-start-color: var(--accent); }
+.defer-card.defer-in .defer-head .ic { color: var(--accent); }
+.defer-card.defer-in .defer-head em { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+#rpDefer .item-chip[data-inv] { cursor: pointer; }
 .warn-box { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--text); margin: 0 16px 12px; }
 .warn-box .ic { color: var(--warning); }
 

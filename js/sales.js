@@ -21,6 +21,13 @@ function oTime(o) {
 /* Really deferred = its accounting day differs from the day it was created (a "deferral" to the same day is not one) */
 const ymdLocal = ts => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const oDeferred = (id, o) => !!(o && o.isInvoiceDeferred && /^\d{4}-\d{2}-\d{2}$/.test(o.accountingDate || '') && createdSort(id, o) && o.accountingDate !== ymdLocal(createdSort(id, o)));
+/* A deferred invoice sorts at the top of its accounting day (it has no clock time there); others by their real time */
+const oDayKey = (id, o) => (oDeferred(id, o) ? new Date(`${o.accountingDate}T23:59:59.999`).getTime() : createdSort(id, o) || oTime(o));
+/* Card of deferred invoices. 'out' = created in the chosen days, counted on another day (chip shows that day);
+   'in' = created on other days, counted in the chosen days (chip shows the day it was created).
+   chipAttr(x) adds attributes to a chip (the reports page opens the invoice from it). */
+const deferCard = (list, kind = 'out', chipAttr = () => '') => (!list.length ? '' : `<section class="card defer-card${kind === 'in' ? ' defer-in' : ''}"><div class="defer-head">${icon('clock')}<b>${t(kind === 'in' ? 'o.deferredIn' : 'o.deferred')}</b><em>${list.length}</em><small>${t(kind === 'in' ? 'o.deferredInSub' : 'o.deferredSub')}</small></div>
+  <div class="defer-list">${list.map(x => `<span class="item-chip"${chipAttr(x)}><b class="mono">#${esc(oNum(x.o))}</b><small>${esc(kind === 'in' ? `${t('o.createdOn')} ${ymdLocal(createdSort(x.id, x.o))}` : x.o.accountingDate || '')}</small></span>`).join('')}</div></section>`);
 /* Only the manager and the treasurer may defer an invoice to a day that has passed */
 const canDeferPast = () => ['manager', 'treasurer'].includes(me().role);
 const oNum = o => (o && (o.orderNumber || o.invoiceNumber || o.invoiceNo || o.orderId || o.number)) || '-';
@@ -188,7 +195,8 @@ function invoiceDoc(o) {
 /* A sale invoice in a drawer (the item card opens it like its other documents); print stays a button */
 function invoiceDetails(o) {
   const items = oItems(o), m = n => `${fmtNum(n, 3, 3)} ${t('currency')}`;
-  const meta = [[t('o.branch'), oBranch(o)], [t('c.date'), fmtDateTime(oTime(o))], [t('o.customer'), oCustName(o)], [t('c.phone'), oPhone(o)], [t('o.cashier'), oCashier(o)],
+  // The real time it was made; a deferred invoice also says which day it counts on
+  const meta = [[t('o.branch'), oBranch(o)], [t('c.date'), fmtDateTime(createdSort('', o) || oTime(o))], ...(oDeferred('', o) ? [[t('o.deferredTo'), o.accountingDate]] : []), [t('o.customer'), oCustName(o)], [t('c.phone'), oPhone(o)], [t('o.cashier'), oCashier(o)],
     [t('o.payment'), oPay(o)], [t('o.type'), oType(o)], [t('o.zone'), oZone(o)], ...(o.tableNumber ? [[t('o.table'), o.tableNumber]] : []), ...(o.address ? [[t('o.address'), o.address]] : [])];
   const dr = freshDrawer(true);
   dr.innerHTML = `
@@ -309,30 +317,33 @@ PAGES.orders = view => {
     </section>`;
 
   const zones = msControl($('#oZones', view), { items: zoneItems, get: () => st.zones, set: v => { st.zones = v; st.page = 1; zones.paint(); draw(); } });
-  const sortedOrders = () => Object.entries(LIVE.cache.orders || {}).filter(([, o]) => o && typeof o === 'object').map(([id, o]) => ({ id, o })).sort((a, b) => oTime(b.o) - oTime(a.o));
-  function matches(o) {
-    const br = LIVE.cache.branches || {}, ca = LIVE.cache.cashiers || {}, ty = LIVE.cache.orderTypes || {};
+  const sortedOrders = () => Object.entries(LIVE.cache.orders || {}).filter(([, o]) => o && typeof o === 'object').map(([id, o]) => ({ id, o })).sort((a, b) => oDayKey(b.id, b.o) - oDayKey(a.id, a.o));
+  function matches(x) {
+    const o = x.o, br = LIVE.cache.branches || {}, ca = LIVE.cache.cashiers || {}, ty = LIVE.cache.orderTypes || {};
     if (st.branch !== 'all' && o.branchId !== st.branch && oBranch(o) !== nameOf(br[st.branch])) return false;
     if (st.cashier !== 'all' && o.cashierId !== st.cashier && oCashier(o) !== ((ca[st.cashier] || {}).name || (ca[st.cashier] || {}).code)) return false;
     if (st.zones.length && !st.zones.includes(o.deliveryZoneId || '')) return false;
     if (st.type !== 'all' && (o.orderTypeId || '') !== st.type && oType(o) !== nameOf(ty[st.type])) return false;
-    const ts = oTime(o);
-    if (st.from && ts < dayStart(st.from)) return false;
-    if (st.to && ts > dayEnd(st.to)) return false;
+    // A date filter keeps the invoices counted in it: a deferred invoice counts on its accounting day
+    if ((st.from || st.to) && !inRange(oTime(o), st.from, st.to)) return false;
     return !st.q || oText(o).includes(normQ(st.q));
   }
-  const filteredList = () => sortedOrders().filter(x => matches(x.o));
+  const filteredList = () => sortedOrders().filter(matches);
   const chosen = () => { const f = filteredList(); return st.sel.size ? f.filter(x => st.sel.has(x.id)) : f; };
 
+  // The real time it was made (oTime puts a deferred invoice at midnight of its accounting day)
+  const oClock = x => createdSort(x.id, x.o) || oTime(x.o);
+  // "Deferred to 20 (created 18)"
+  const deferText = x => (!oDeferred(x.id, x.o) ? '' : `${t('o.deferredTo')} ${x.o.accountingDate} (${t('o.createdOn')} ${ymdLocal(oClock(x))})`);
   function row(x, i) {
     const o = x.o, c = oCancelled(o);
     return `<tr data-id="${esc(x.id)}" class="${first ? 'row-in' : ''}${c ? ' is-cancelled' : ''}" style="--r:${i}">
       <td class="sel-col"><input type="checkbox" data-sel ${st.sel.has(x.id) ? 'checked' : ''} aria-label="${esc(oNum(o))}"></td>
-      <td data-label="${t('o.number')}"><span class="cell-2"><b class="mono">#${esc(oNum(o))}</b>${c ? `<small class="cancel-note">${esc(oCancelText(o))}</small>` : ''}${oDeferred(x.id, o) ? `<small class="defer-note">${icon('clock')}${t('o.deferredTo')} ${esc(o.accountingDate)}</small>` : ''}</span></td>
+      <td data-label="${t('o.number')}"><span class="cell-2"><b class="mono">#${esc(oNum(o))}</b>${c ? `<small class="cancel-note">${esc(oCancelText(o))}</small>` : ''}${oDeferred(x.id, o) ? `<small class="defer-note">${icon('clock')}${esc(deferText(x))}</small>` : ''}</span></td>
       <td data-label="${t('o.customer')}">${oCustId(o) ? `<button type="button" class="link" data-o="customer">${esc(oCustName(o))}</button>` : esc(oCustName(o))}</td>
       <td data-label="${t('o.zone')}">${esc(oZone(o))}</td>
       <td data-label="${t('c.phone')}"><span class="mono">${esc(oPhone(o))}</span></td>
-      <td data-label="${t('c.date')}"><span class="date">${fmtDateTime(oTime(o))}</span></td>
+      <td data-label="${t('c.date')}"><span class="date">${fmtDateTime(oClock(x))}</span></td>
       <td data-label="${t('o.cashier')}">${esc(oCashier(o))}</td>
       <td data-label="${t('o.branch')}">${esc(oBranch(o))}</td>
       <td data-label="${t('o.type')}">${esc(oType(o))}</td>
@@ -354,7 +365,7 @@ PAGES.orders = view => {
     // Ticked orders removed elsewhere drop out
     const orders = LIVE.cache.orders || {};
     [...st.sel].forEach(id => { if (!orders[id]) st.sel.delete(id); });
-    const list = all.filter(x => matches(x.o));
+    const list = all.filter(matches);
     const live = list.filter(x => !oCancelled(x.o));
     setKpis($('#oK', view), [
       kpiCard({ label: t('o.kCount'), value: live.length, ic: 'receipt', tone: 'c1' }),
@@ -366,11 +377,9 @@ PAGES.orders = view => {
     setHtml($('#oCashier', view), `<option value="all">${t('o.allCashiers')}</option>` + optsHtml(Object.entries(LIVE.cache.cashiers || {}).map(([id, c]) => [id, (c && (c.name || c.code)) || id]), st.cashier));
     setHtml($('#oType', view), `<option value="all">${t('o.allTypes')}</option>` + optsHtml(sortedOpts(LIVE.cache.orderTypes), st.type));
     zones.paint();
-    // One day selected: show invoices created that day but moved to a later accounting day
-    const day = st.from && st.from === st.to ? st.from : '';
-    const deferred = day ? all.filter(x => oDeferred(x.id, x.o) && inRange(createdSort(x.id, x.o), day, day)) : [];
-    setHtml($('#oDeferred', view), deferred.length ? `<section class="card defer-card"><div class="defer-head">${icon('clock')}<b>${t('o.deferred')}</b><em>${deferred.length}</em><small>${t('o.deferredSub')}</small></div>
-      <div class="defer-list">${deferred.map(x => `<span class="item-chip"><b class="mono">#${esc(oNum(x.o))}</b><small>${esc(x.o.accountingDate || '')}</small></span>`).join('')}</div></section>` : '');
+    // A date filter: the invoices created in it but deferred to another day, in a card above the list
+    const outs = (st.from || st.to) ? all.filter(x => oDeferred(x.id, x.o) && inRange(createdSort(x.id, x.o), st.from, st.to) && !inRange(oTime(x.o), st.from, st.to)) : [];
+    setHtml($('#oDeferred', view), deferCard(outs));
     setHtml($('#oPager', view), pagerHtml(st, list.length));
     const slice = list.slice((st.page - 1) * st.per, st.page * st.per);
     pageIds = slice.map(x => x.id);
@@ -381,19 +390,19 @@ PAGES.orders = view => {
   }
 
   function exportOrders() {
-    const rows = chosen().slice().sort((a, b) => oTime(a.o) - oTime(b.o)).map(({ o }) => ({
-      [t('o.number')]: oNum(o), [t('o.status')]: oCancelled(o) ? t('o.cancelled') : t('o.active'), [t('o.cancelledByCol')]: o.cancelledByName || '', [t('o.cancelledAt')]: o.cancelledAt ? fmtDateTime(o.cancelledAt) : '',
-      [t('o.customer')]: oCustName(o), [t('o.zone')]: oZone(o), [t('c.phone')]: oPhone(o), [t('c.date')]: fmtDateTime(oTime(o)), [t('o.payment')]: oPay(o), [t('o.cashier')]: oCashier(o),
+    const rows = chosen().slice().sort((a, b) => oDayKey(a.id, a.o) - oDayKey(b.id, b.o)).map(x => ({ x, o: x.o })).map(({ x, o }) => ({
+      [t('o.number')]: oNum(o), [t('o.status')]: oCancelled(o) ? t('o.cancelled') : t('o.active'), [t('o.deferredCol')]: deferText(x), [t('o.cancelledByCol')]: o.cancelledByName || '', [t('o.cancelledAt')]: o.cancelledAt ? fmtDateTime(o.cancelledAt) : '',
+      [t('o.customer')]: oCustName(o), [t('o.zone')]: oZone(o), [t('c.phone')]: oPhone(o), [t('c.date')]: fmtDateTime(oClock(x)), [t('o.payment')]: oPay(o), [t('o.cashier')]: oCashier(o),
       [t('o.branch')]: oBranch(o), [t('o.type')]: oType(o), [t('o.net')]: +oSub(o).toFixed(3), [t('o.fee')]: +oFee(o).toFixed(3), [t('o.grand')]: +oTotal(o).toFixed(3) }));
     excelOut(rows, 'orders-report.xlsx');
   }
   function printOrders() {
-    const list = chosen().slice().sort((a, b) => oTime(a.o) - oTime(b.o));
+    const list = chosen().slice().sort((a, b) => oDayKey(a.id, a.o) - oDayKey(b.id, b.o));
     if (!list.length) { toast(t('o.nothingToExport'), { tone: 'danger', ic: 'alert' }); return; }
     const tot = list.reduce((a, { o }) => ({ net: a.net + oSub(o), fee: a.fee + oFee(o), all: a.all + oTotal(o) }), { net: 0, fee: 0, all: 0 });
     printDoc(t('orders'), [[t('c.from'), st.from || '-'], [t('c.to'), st.to || '-'], [t('o.kCount'), String(list.length)]],
       [t('o.number'), t('o.customer'), t('c.phone'), t('o.zone'), t('o.branch'), t('o.cashier'), t('o.type'), t('o.net'), t('o.fee'), t('o.grand'), t('c.date')],
-      list.map(({ o }) => [[oNum(o), oCancelText(o)].filter(Boolean).join(' — '), oCustName(o), oPhone(o), oZone(o), oBranch(o), oCashier(o), oType(o), moneyPlain(oSub(o)), moneyPlain(oFee(o)), moneyPlain(oTotal(o)), fmtDateTime(oTime(o))]),
+      list.map(x => { const o = x.o; return [[oNum(o), oCancelText(o), deferText(x)].filter(Boolean).join(' — '), oCustName(o), oPhone(o), oZone(o), oBranch(o), oCashier(o), oType(o), moneyPlain(oSub(o)), moneyPlain(oFee(o)), moneyPlain(oTotal(o)), fmtDateTime(oClock(x))]; }),
       [[t('o.net'), moneyPlain(tot.net)], [t('o.fee'), moneyPlain(tot.fee)], [t('o.grand'), moneyPlain(tot.all)]]);
   }
 
@@ -631,7 +640,7 @@ PAGES.orders = view => {
   draw();
   // Card pages: the same filtered, non-cancelled orders the cards add up, broken down
   const closeDrill = kpiDrills(view, { paths: OR_PATHS, ready: () => LIVE.loaded(OR_PATHS), build: kind => {
-    const live = sortedOrders().filter(x => matches(x.o) && !oCancelled(x.o)).map(x => x.o);
+    const live = sortedOrders().filter(x => matches(x) && !oCancelled(x.o)).map(x => x.o);
     const sub = t('kd.filtered');
     if (kind === 'net') return { ...kdBreakdown({ title: `${t('o.net')} ${t('kd.byBranch')}`, sub, ic: 'wallet', file: 'orders-net-by-branch.xlsx', groupH: t('kd.branch'), countH: t('kd.orders'), valueH: t('o.net'),
       items: kdGroup(live, o => o.branchId || oBranch(o), oBranch, oSub) }), onRow: id => { if (LIVE.cache.branches && LIVE.cache.branches[id]) { st.branch = id; st.page = 1; closeDrill(); draw(); } } };
